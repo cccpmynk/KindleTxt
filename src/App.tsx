@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, BookOpen, Smartphone } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -19,17 +19,44 @@ export default function App() {
   const [showGuide, setShowGuide] = useState(false);
   const [showFAQ, setShowFAQ] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const processFile = (selectedFile: File) => {
+    if (selectedFile.type !== "text/plain" && !selectedFile.name.toLowerCase().endsWith(".txt")) {
+      setError("目前仅支持 TXT 格式文件。");
+      return;
+    }
+    setFile(selectedFile);
+    setError(null);
+    setStatus("idle");
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
-      if (selectedFile.type !== "text/plain" && !selectedFile.name.endsWith(".txt")) {
-        setError("目前仅支持 TXT 格式文件。");
-        return;
-      }
-      setFile(selectedFile);
-      setError(null);
-      setStatus("idle");
+      processFile(selectedFile);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const selectedFile = e.dataTransfer.files?.[0];
+    if (selectedFile) {
+      if (status !== "idle" && status !== "error") return;
+      processFile(selectedFile);
     }
   };
 
@@ -114,7 +141,13 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-[#FDFCFB] text-slate-900 font-sans selection:bg-orange-100">
+    <div 
+      className="min-h-screen bg-[#FDFCFB] text-slate-900 font-sans selection:bg-orange-100"
+      onDragOver={handleDragOver}
+      onDragEnter={(e) => e.preventDefault()}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       {/* Top Navigation */}
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-4xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -181,6 +214,10 @@ export default function App() {
             <p>A: 亚马逊官方自2022年起已经全面支持 EPUB 格式，并且现在的 Kindle 已经停止支持通过邮件发送 MOBI。EPUB 具有更好的兼容性和排版效果，是目前最推荐的格式。</p>
           </div>
           <div>
+            <h4 className="font-bold text-slate-900 mb-2">Q: Send to Kindle 如何使用？</h4>
+            <p>A: 转换完成后下载 EPUB 文件，您可以通过浏览器访问亚马逊官方的 <a href="https://www.amazon.com/sendtokindle" target="_blank" rel="noopener noreferrer" className="text-orange-600 hover:underline">Send to Kindle 网页端</a>，把文件拖入即可无线推送到您的 Kindle。您也可以将文件作为附件发邮件至您的专属 Kindle 邮箱。</p>
+          </div>
+          <div>
             <h4 className="font-bold text-slate-900 mb-2">Q: 发现文件转换后有乱码怎么办？</h4>
             <p>A: 这是由于 TXT 文件编码不是 UTF-8 导致的。请尝试在电脑上用记事本打开 TXT，选择“另存为”，在编码处选择 <span className="font-semibold text-slate-900">UTF-8</span>，然后重新上传转换。</p>
           </div>
@@ -231,13 +268,19 @@ export default function App() {
                     {!file ? (
                       <div 
                         onClick={() => fileInputRef.current?.click()}
-                        className="w-full border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center cursor-pointer hover:border-slate-400 hover:bg-slate-50/50 transition-all group"
+                        className={`w-full border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-all group ${
+                          isDragging 
+                            ? "border-orange-400 bg-orange-50/50" 
+                            : "border-slate-200 hover:border-slate-400 hover:bg-slate-50/50"
+                        }`}
                       >
-                        <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                          <Upload className="text-slate-400 group-hover:text-slate-600" size={28} />
+                        <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 transition-transform ${
+                          isDragging ? "bg-orange-100 scale-110" : "bg-slate-50 group-hover:scale-110"
+                        }`}>
+                          <Upload className={isDragging ? "text-orange-500" : "text-slate-400 group-hover:text-slate-600"} size={28} />
                         </div>
                         <p className="font-medium text-slate-700 mb-1">点击或拖拽 TXT 文件到此处</p>
-                        <p className="text-sm text-slate-400">支持最大 50MB 的纯文本文件</p>
+                        <p className="text-sm text-slate-400">支持最大 10MB 的纯文本文件</p>
                         <input 
                           type="file" 
                           ref={fileInputRef}
@@ -329,8 +372,7 @@ export default function App() {
                     <div className="mt-8 p-4 bg-amber-50 rounded-2xl border border-amber-100/50 flex gap-3 text-amber-900 text-sm italic">
                       <AlertCircle size={18} className="shrink-0" />
                       <p>
-                        <strong>Kindle 提示：</strong> 亚马逊官方已支持直接推送 EPUB 格式，
-                        效果甚至优于旧的 AZW3 格式。您可以使用 "Send to Kindle" 进行推送。
+                        <strong>Kindle 提示：</strong> 使用官方的 <a href="https://www.amazon.com/sendtokindle" target="_blank" rel="noopener noreferrer" className="underline font-medium hover:text-amber-700">Send to Kindle 网页端</a>，或发送邮件到设备专属邮箱即可推送至设备，效果极佳。
                       </p>
                     </div>
                   </motion.div>

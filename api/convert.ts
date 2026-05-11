@@ -2,6 +2,18 @@ import express from "express";
 import multer from "multer";
 import cors from "cors";
 import epubGenerator from "epub-gen-memory";
+import iconv from "iconv-lite";
+import jschardet from "jschardet";
+
+// Fix for epub-gen-memory in ESM
+const generateEpub = (options: any, chapters: any) => {
+  if (typeof epubGenerator === "function") {
+    return epubGenerator(options, chapters);
+  } else if (epubGenerator && typeof (epubGenerator as any).default === "function") {
+    return (epubGenerator as any).default(options, chapters);
+  }
+  throw new Error("Could not find epub-gen-memory generator function");
+};
 
 const app = express();
 app.use(cors());
@@ -10,70 +22,85 @@ app.use(express.json());
 const storage = multer.memoryStorage();
 const upload = multer({ 
   storage: storage,
-  // 提醒：Vercel 免费版 Body Size 限制为 4.5MB
+  // Note: Vercel free tier body limit is around 4.5MB
   limits: { fileSize: 10 * 1024 * 1024 } 
 });
 
-// 处理 Vercel 路由：匹配 /api/convert
 app.post("/api/convert", upload.single("file"), async (req: any, res: any) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "没有上传文件" });
     }
 
-    // 默认使用 utf-8，如果需要处理 GBK 可以在这里扩展
-    const fileContent = req.file.buffer.toString("utf-8");
-    const fileName = req.file.originalname.replace(".txt", "");
+    // Detection of encoding
+    const buffer = req.file.buffer;
+    const detected = jschardet.detect(buffer);
+    let encoding = detected.encoding || "utf-8";
+    if (encoding.toLowerCase() === "ascii") encoding = "utf-8";
     
-    // 增强版章节识别正则
-    const chapterRegex = /\n\s*(第[一二三四五六七八九十百千万\d]+[章节回]|[Cc]hapter\s+\d+).*/g;
-    
-    let chapters: { title: string; content: string }[] = [];
-    const splitContent = fileContent.split(chapterRegex);
-    const matches = fileContent.match(chapterRegex);
+    let fileContent = "";
+    try {
+      fileContent = iconv.decode(buffer, encoding);
+    } catch (e) {
+      fileContent = buffer.toString("utf-8");
+    }
 
-    if (!matches || matches.length === 0) {
-      chapters = [{
-        title: "正文",
-        content: fileContent.split("\n").map(line => `<p>${line.trim()}</p>`).join("")
-      }];
-    } else {
-      if (splitContent[0].trim()) {
-        chapters.push({
-          title: "前言",
-          content: splitContent[0].split("\n").map(line => `<p>${line.trim()}</p>`).join("")
-        });
-      }
-      for (let i = 0; i < matches.length; i++) {
-        const title = matches[i].trim();
-        const content = splitContent[i + 1] || "";
-        chapters.push({
-          title,
-          content: content.split("\n").map(line => `<p>${line.trim()}</p>`).join("")
-        });
-      }
+    const fileName = req.file.originalname.replace(/\.txt$/i, "");
+    
+    // Better chapter detection logic using capturing groups
+    const chapterRegex = /((?:^|\n)\s*(?:第[一二三四五六七八九十百千万\d]+[章节回]|[Cc]hapter\s+\d+).*)/g;
+    
+    const parts = fileContent.split(chapterRegex);
+    let chapters: { title: string; content: string }[] = [];
+
+    const formatToHtml = (text: string) => {
+      if (!text) return "";
+      return text.split(/\r?\n/)
+        .map(line => line.trim())
+        .map(line => line ? `<p>${line}</p>` : "<p><br/></p>")
+        .join("");
+    };
+
+    if (parts[0] && parts[0].trim()) {
+      chapters.push({
+        title: "前言",
+        content: formatToHtml(parts[0])
+      });
+    }
+
+    for (let i = 1; i < parts.length; i += 2) {
+      const title = parts[i].trim();
+      const content = parts[i + 1] || "";
+      chapters.push({
+        title,
+        content: formatToHtml(content) || "<p>本章无内容</p>"
+      });
+    }
+
+    if (chapters.length === 0) {
+      chapters.push({ title: "正文", content: formatToHtml(fileContent) });
     }
 
     const option = {
       title: fileName,
       author: "KindleTxt Converter",
-      publisher: "KindleTxt",
-      content: chapters.map(ch => ({
-        title: ch.title,
-        data: ch.content
-      }))
+      publisher: "KindleTxt"
     };
 
-    const epubBuffer = await epubGenerator(option, []);
+    const epubChapters = chapters.map(ch => ({
+      title: ch.title,
+      content: ch.content
+    }));
+
+    const epubBuffer = await generateEpub(option, epubChapters);
     
     res.setHeader("Content-Type", "application/epub+zip");
-    // 对文件名进行二次编码确保下载时不乱码
-    const safeFileName = encodeURIComponent(fileName) + ".epub";
-    res.setHeader("Content-Disposition", `attachment; filename="${safeFileName}"; filename*=UTF-8''${safeFileName}`);
+    const safeName = encodeURIComponent(fileName) + ".epub";
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}"; filename*=UTF-8''${safeName}`);
     res.send(epubBuffer);
   } catch (error) {
     console.error("Vercel API Error:", error);
-    res.status(500).json({ error: "转换失败，Vercel 免费版限制上传可能不能超过 4.5MB。" });
+    res.status(500).json({ error: "转换失败，Vercel 可能由于文件过大或超时而中断。" });
   }
 });
 
