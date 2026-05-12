@@ -34,6 +34,12 @@ export default function App() {
       return;
     }
     
+    if (selectedFile.size > 50 * 1024 * 1024) {
+      setError("文件过大，为了保证您的设备运行稳定，暂不支持超过 50MB 的文件。");
+      setFile(selectedFile); // 依然显示文件，但是会展示报错
+      return;
+    }
+    
     setFile(selectedFile);
     setStatus("idle");
   };
@@ -103,8 +109,8 @@ export default function App() {
       setStatus("converting");
       setBatchProgress({ current: 0, total: -1 });
       
-      // Delay to allow UI to update to parsing state before synchronous blocking operations
-      await new Promise(resolve => setTimeout(resolve, 60));
+      // Delay to allow UI animations to finish before synchronous blocking operations
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       try {
         const buffer = await file.arrayBuffer();
@@ -145,9 +151,14 @@ export default function App() {
         let currentChunk = [];
         let currentSize = 0;
         const TARGET_SIZE = 3.5 * 1024 * 1024; // 3.5MB
+        const textEncoder = new TextEncoder();
 
-        for (const line of lines) {
-          const lineSize = new Blob([line + '\n']).size;
+        for (let i = 0; i < lines.length; i++) {
+          if (i % 5000 === 0) {
+            await new Promise(r => setTimeout(r, 0));
+          }
+          const line = lines[i];
+          const lineSize = textEncoder.encode(line).length + 1; // +1 for '\n'
           if (currentSize + lineSize > TARGET_SIZE && currentChunk.length > 0) {
             chunks.push(new Blob(currentChunk, { type: "text/plain" }));
             currentChunk = [];
@@ -433,7 +444,7 @@ export default function App() {
                           <Upload className={isDragging ? "text-orange-500" : "text-slate-400 group-hover:text-slate-600"} size={28} />
                         </div>
                         <p className="font-medium text-slate-700 mb-1">点击或拖拽 TXT 文件到此处</p>
-                        <p className="text-sm text-slate-400">支持最大 4.5MB 的纯文本文件</p>
+                        <p className="text-sm text-slate-400">支持最大 50MB 的 TXT 纯文本文件（超大文件将自动分卷）</p>
                         <input 
                           type="file" 
                           ref={fileInputRef}
