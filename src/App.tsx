@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, BookOpen, Smartphone } from "lucide-react";
+import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, BookOpen, Smartphone, Sparkles, Image as ImageIcon } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 /**
@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "motion/react";
  * A minimal, elegant tool to convert TXT files to Kindle-compatible EPUB format.
  */
 
-type ConversionStatus = "idle" | "uploading" | "converting" | "success" | "error";
+type ConversionStatus = "idle" | "uploading" | "generating_cover" | "converting" | "success" | "error";
 
 export default function App() {
   const [status, setStatus] = useState<ConversionStatus>("idle");
@@ -20,6 +20,8 @@ export default function App() {
   const [showFAQ, setShowFAQ] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [useAICover, setUseAICover] = useState(true);
+  const [outputFormat, setOutputFormat] = useState<"epub" | "azw3">("epub");
 
   const processFile = (selectedFile: File) => {
     if (selectedFile.type !== "text/plain" && !selectedFile.name.toLowerCase().endsWith(".txt")) {
@@ -66,11 +68,41 @@ export default function App() {
     setStatus("uploading");
     setError(null);
 
+    let generatedCoverBase64: string | null = null;
+    
+    if (useAICover) {
+      setStatus("generating_cover");
+      try {
+        const bookName = file.name.replace(/\.txt$/i, "");
+        const promptString = `A minimalist, elegant and beautiful book cover design for a book titled "${bookName}". Clean and modern style, centered title, professional typography.`;
+        
+        // 使用免费免 Key 的图片生成服务
+        const coverUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(promptString)}?width=600&height=800&nologo=true`;
+        
+        const imageRes = await fetch(coverUrl);
+        if (imageRes.ok) {
+          const imageBlob = await imageRes.blob();
+          const arrayBuffer = await imageBlob.arrayBuffer();
+          const base64 = btoa(
+            new Uint8Array(arrayBuffer)
+              .reduce((data, byte) => data + String.fromCharCode(byte), '')
+          );
+          generatedCoverBase64 = `data:${imageBlob.type || 'image/jpeg'};base64,${base64}`;
+        }
+      } catch (err) {
+        console.error("Failed to generate cover:", err);
+      }
+    }
+
+    setStatus("converting");
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("format", outputFormat);
+    if (generatedCoverBase64) {
+      formData.append("coverImage", generatedCoverBase64);
+    }
 
     try {
-      setStatus("converting");
       const response = await fetch("/api/convert", {
         method: "POST",
         body: formData,
@@ -201,7 +233,7 @@ export default function App() {
           </div>
           <div className="flex gap-4">
             <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0 font-bold text-slate-900">4</div>
-            <p>下载生成的 <span className="font-semibold text-slate-900">EPUB</span> 文件。您可以通过电缆复制到 Kindle，或使用亚马逊官方的 <span className="underline italic">Send to Kindle</span> 服务发送。</p>
+            <p>下载生成的 <span className="font-semibold text-slate-900">EPUB</span> 文件。您可以通过电缆复制到 Kindle，或使用亚马逊官方的 <a href="https://www.amazon.com/sendtokindle" target="_blank" rel="noopener noreferrer" className="text-orange-600 hover:underline italic font-medium">Send to Kindle</a> 服务发送。</p>
           </div>
         </div>
       </Modal>
@@ -291,7 +323,7 @@ export default function App() {
                       </div>
                     ) : (
                       <div className="w-full">
-                        <div className="flex items-center gap-4 bg-slate-50 p-6 rounded-2xl border border-slate-100 mb-8">
+                        <div className="flex items-center gap-4 bg-slate-50 p-6 rounded-2xl border border-slate-100 mb-6">
                           <div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-slate-400">
                             <FileText size={20} />
                           </div>
@@ -306,6 +338,46 @@ export default function App() {
                             移除
                           </button>
                         </div>
+                        
+                        <div className="flex flex-col gap-3 mb-6">
+                          <label className="text-sm font-semibold text-slate-700 block text-left">选择输出格式：</label>
+                          <div className="flex bg-slate-100 p-1 rounded-xl">
+                            <button
+                              onClick={() => setOutputFormat("epub")}
+                              className={`flex-1 py-2.5 px-4 text-sm font-medium rounded-lg transition-all ${
+                                outputFormat === "epub" 
+                                  ? "bg-white text-slate-900 shadow-sm" 
+                                  : "text-slate-500 hover:text-slate-700"
+                              }`}
+                            >
+                              EPUB (推荐)
+                            </button>
+                            <button
+                              onClick={() => setOutputFormat("azw3")}
+                              className={`flex-1 py-2.5 px-4 text-sm font-medium rounded-lg transition-all ${
+                                outputFormat === "azw3" 
+                                  ? "bg-white text-slate-900 shadow-sm" 
+                                  : "text-slate-500 hover:text-slate-700"
+                              }`}
+                            >
+                              AZW3 (老款)
+                            </button>
+                          </div>
+                        </div>
+
+                        <label className="flex items-center justify-center gap-2 mb-6 cursor-pointer group">
+                          <input 
+                            type="checkbox" 
+                            checked={useAICover} 
+                            onChange={(e) => setUseAICover(e.target.checked)}
+                            className="w-4 h-4 text-orange-500 rounded border-slate-300 focus:ring-orange-500"
+                          />
+                          <span className="text-sm font-medium text-slate-600 group-hover:text-slate-900 transition-colors flex items-center gap-1.5">
+                            <ImageIcon size={16} className={useAICover ? "text-orange-500" : "text-slate-400"} />
+                            使用 AI 自动生成专属封面
+                          </span>
+                        </label>
+
                         <button 
                           onClick={handleUpload}
                           className="w-full bg-slate-900 text-white py-4 rounded-xl font-semibold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 group shadow-lg shadow-slate-200"
@@ -318,7 +390,7 @@ export default function App() {
                   </motion.div>
                 )}
 
-                {(status === "converting" || status === "uploading") && (
+                {(status === "converting" || status === "uploading" || status === "generating_cover") && (
                   <motion.div
                     key="processing"
                     initial={{ opacity: 0 }}
@@ -328,12 +400,19 @@ export default function App() {
                   >
                     <div className="relative mb-8">
                       <div className="w-24 h-24 rounded-full border-4 border-slate-100 animate-pulse" />
-                      <Loader2 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-slate-900 animate-spin" size={40} />
+                      {status === "generating_cover" ? (
+                        <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-orange-500 animate-pulse" size={40} />
+                      ) : (
+                        <Loader2 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-slate-900 animate-spin" size={40} />
+                      )}
                     </div>
-                    <h3 className="text-xl font-semibold mb-2">正在转换...</h3>
+                    <h3 className="text-xl font-semibold mb-2">
+                      {status === "generating_cover" ? "正在绘制封面..." : "正在转换..."}
+                    </h3>
                     <p className="text-slate-500 text-center max-w-xs">
-                      正在为您识别章节并重新排版，
-                      这可能需要几秒钟时间。
+                      {status === "generating_cover" 
+                        ? "AI 正在根据书名为您生成精美的封面配图，请稍候。" 
+                        : "正在为您识别章节并重新排版，这可能需要几秒钟时间。"}
                     </p>
                   </motion.div>
                 )}

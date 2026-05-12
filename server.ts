@@ -26,8 +26,8 @@ function formatToHtml(text: string) {
   return text
     .split(/\r?\n/)
     .map(line => line.trim())
-    // 即使空行也保留一个空的 p 标签以维持间距感，或者合并空行
-    .map(line => line.length > 0 ? `<p>${line}</p>` : "<p><br/></p>")
+    .filter(line => line.length > 0)
+    .map(line => `<p>${line}</p>`)
     .join("");
 }
 
@@ -68,8 +68,17 @@ async function startServer() {
         fileContent = buffer.toString("utf-8");
       }
 
-      const fileName = req.file.originalname.replace(/\.txt$/i, "");
+      // 修复 multer 中文文件名乱码问题：将 latin1 转换为 utf8
+      const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+      const fileName = originalName.replace(/\.txt$/i, "");
       
+      // AZW3 handling
+      if (req.body.format === "azw3") {
+        return res.status(400).json({
+          error: "当前环境不支持直接生成 AZW3 (缺少 KindleGen 支持)。老款 Kindle 请放心发送 EPUB 文件至设备的 Send to Kindle 邮箱，亚马逊云端会自动将其转换为支持的 AZW3 格式并下发至您的设备。"
+        });
+      }
+
       // 使用捕获组，这样 split 后的数组会包含匹配到的章节名
       // 增强正则：支持换行符、行首、以及更宽泛的章节标识
       const chapterRegex = /((?:^|\n)\s*(?:第[一二三四五六七八九十百千万\d]+[章节回]|[Cc]hapter\s+\d+).*)/g;
@@ -104,10 +113,12 @@ async function startServer() {
         });
       }
 
+      const formDataCover = req.body.coverImage;
       const option = {
         title: fileName,
         author: "KindleTxt Converter",
-        publisher: "KindleTxt"
+        publisher: "KindleTxt",
+        cover: formDataCover || `https://placehold.co/600x800/1e293b/FFFFFF.png?text=${encodeURIComponent(fileName)}`
       };
 
       const epubChapters = chapters.map(ch => ({
