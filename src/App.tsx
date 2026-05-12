@@ -94,6 +94,11 @@ export default function App() {
       }
     }
 
+    if (file.size > 4 * 1024 * 1024) {
+      setError("文件太大（超过 4MB）。由于服务器限制，请尝试拆分文件或压缩后再试。");
+      return;
+    }
+
     setStatus("converting");
     const formData = new FormData();
     formData.append("file", file);
@@ -109,8 +114,23 @@ export default function App() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "转换失败");
+        // 先尝试获取文本，防止 response.json() 报错
+        const errorText = await response.text();
+        let errorMessage = "转换失败";
+        
+        try {
+          // 如果是 JSON 格式的错误，解析它
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorMessage;
+        } catch (e) {
+          // 如果不是 JSON，说明可能是服务器层面的报错（如 413）
+          if (response.status === 413) {
+            errorMessage = "文件太大，超出了服务器处理上限 (4.5MB)";
+          } else {
+            errorMessage = `服务器异常 (${response.status}): ${errorText.substring(0, 50)}...`;
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       const blob = await response.blob();
