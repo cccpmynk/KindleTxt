@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import JSZip from "jszip";
 import jschardet from "jschardet";
-import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, BookOpen, Smartphone, Sparkles, Image as ImageIcon, Info } from "lucide-react";
+import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, BookOpen, Smartphone, Sparkles, Image as ImageIcon, Info, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 /**
@@ -81,11 +81,27 @@ const translations = {
     serverError: "文件太大，超出了服务器处理上限 (4.5MB)",
     batchError: "分卷转换过程中发生故障",
     partFailed: "部分转换失败",
-    modalClose: "我知道了"
+    modalClose: "我知道了",
+    feedback: "建议反馈",
+    feedbackTitle: "📬 留下您的建议",
+    feedbackSub: "您的反馈是我们进步的动力 (最多300字)",
+    feedbackPlaceholder: "请输入您的留言或建议...",
+    feedbackSubmit: "提交反馈",
+    feedbackSuccess: "提交成功，感谢您的建议！",
+    feedbackError: "提交失败，请稍后重试",
+    feedbackSending: "正在提交...",
   },
   en: {
     guide: "Guide",
     faq: "FAQ",
+    feedback: "Feedback",
+    feedbackTitle: "📬 Leave a Suggestion",
+    feedbackSub: "Your feedback drives our progress (Max 300 chars)",
+    feedbackPlaceholder: "Enter your message or suggestion...",
+    feedbackSubmit: "Submit",
+    feedbackSuccess: "Submitted successfully, thank you!",
+    feedbackError: "Failed to submit, please try again",
+    feedbackSending: "Sending...",
     about: "About",
     aboutTitle: "👋 About Project",
     aboutAuthor: "This app is developed by Dr. Alex Meng",
@@ -146,6 +162,43 @@ const translations = {
   }
 };
 
+const Modal = ({ title, isOpen, onClose, children }: { title: string, isOpen: boolean, onClose: () => void, children: React.ReactNode }) => (
+  <AnimatePresence>
+    {isOpen && (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+          className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm cursor-pointer" 
+        />
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.9, y: 20 }}
+          className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden"
+        >
+          <div className="p-8">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-semibold">{title}</h3>
+              <button 
+                onClick={onClose} 
+                className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-all cursor-pointer group"
+              >
+                <X size={24} className="group-hover:scale-110 transition-transform" />
+              </button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+              {children}
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    )}
+  </AnimatePresence>
+);
+
 export default function App() {
   const [lang, setLang] = useState<"zh" | "en">("zh");
   const t = translations[lang];
@@ -159,10 +212,15 @@ export default function App() {
 
   const [showGuide, setShowGuide] = useState(false);
   const [showFAQ, setShowFAQ] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [useAICover, setUseAICover] = useState(false);
   const [outputFormat, setOutputFormat] = useState<"epub" | "azw3">("epub");
+  
+  const [feedbackContent, setFeedbackContent] = useState("");
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const [feedbackStatus, setFeedbackStatus] = useState<"none" | "success" | "error">("none");
 
   const processFile = (selectedFile: File) => {
     setError(null);
@@ -286,7 +344,7 @@ export default function App() {
 
         const lines = text.split('\n');
         const chunks = [];
-        let currentChunk = [];
+        let currentChunk: string[] = [];
         let currentSize = 0;
         const TARGET_SIZE = 3.5 * 1024 * 1024; // 3.5MB
         const textEncoder = new TextEncoder();
@@ -393,6 +451,34 @@ export default function App() {
     }
   };
 
+  const handleFeedbackSubmit = async () => {
+    if (!feedbackContent.trim() || isSubmittingFeedback) return;
+    
+    setIsSubmittingFeedback(true);
+    setFeedbackStatus("none");
+    
+    try {
+      const response = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: feedbackContent.trim() }),
+      });
+      
+      if (response.ok) {
+        setFeedbackStatus("success");
+        setFeedbackContent("");
+        setTimeout(() => setShowFeedback(false), 2000);
+      } else {
+        setFeedbackStatus("error");
+      }
+    } catch (err) {
+      console.error(err);
+      setFeedbackStatus("error");
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  };
+
   const reset = () => {
     setFile(null);
     setStatus("idle");
@@ -401,46 +487,6 @@ export default function App() {
     setBatchProgress({ current: 0, total: 0 });
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
-
-  const Modal = ({ title, isOpen, onClose, children }: { title: string, isOpen: boolean, onClose: () => void, children: React.ReactNode }) => (
-    <AnimatePresence>
-      {isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" 
-          />
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden"
-          >
-            <div className="p-8">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-semibold">{title}</h3>
-                <button onClick={onClose} className="text-slate-400 hover:text-slate-900 transition-colors cursor-pointer">
-                  <AlertCircle className="rotate-45" size={24} />
-                </button>
-              </div>
-              <div className="max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-                {children}
-              </div>
-              <button 
-                onClick={onClose}
-                className="w-full mt-8 py-3 bg-slate-900 text-white rounded-xl font-medium hover:bg-slate-800 transition-colors"
-              >
-                {t.modalClose}
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      )}
-    </AnimatePresence>
-  );
 
   return (
     <div 
@@ -465,6 +511,7 @@ export default function App() {
           <nav className="flex items-center gap-6 text-sm font-medium text-slate-500">
             <button onClick={() => setShowGuide(true)} className="hover:text-slate-900 transition-colors cursor-pointer">{t.guide}</button>
             <button onClick={() => setShowFAQ(true)} className="hover:text-slate-900 transition-colors cursor-pointer">{t.faq}</button>
+            <button onClick={() => { setShowFeedback(true); setFeedbackStatus("none"); }} className="hover:text-slate-900 transition-colors cursor-pointer">{t.feedback}</button>
             <button 
               onClick={() => setLang(lang === "zh" ? "en" : "zh")} 
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-all text-slate-700 font-semibold cursor-pointer ml-2"
@@ -481,7 +528,11 @@ export default function App() {
       <Modal title={t.aboutTitle} isOpen={showAbout} onClose={() => setShowAbout(false)}>
         <div className="text-center py-4">
           <p className="text-slate-600 text-lg leading-relaxed">
-            {t.aboutAuthor}
+            {lang === "zh" ? (
+              <>本应用由 <a href="https://me.onapp.xyz" target="_blank" rel="noopener noreferrer" className="text-slate-900 font-bold underline underline-offset-4 hover:text-orange-600 transition-colors">Alex孟博士</a> 开发</>
+            ) : (
+              <>This app is developed by <a href="https://me.onapp.xyz" target="_blank" rel="noopener noreferrer" className="text-slate-900 font-bold underline underline-offset-4 hover:text-orange-600 transition-colors">Dr. Alex Meng</a></>
+            )}
           </p>
           <p className="text-slate-400 mt-4 italic">
             {t.aboutEnjoy}
@@ -534,6 +585,57 @@ export default function App() {
             <h4 className="font-bold text-slate-900 mb-2">{t.faqQ5}</h4>
             <p>{t.faqA5}</p>
           </div>
+        </div>
+      </Modal>
+
+      {/* Feedback Modal */}
+      <Modal title={t.feedbackTitle} isOpen={showFeedback} onClose={() => setShowFeedback(false)}>
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500">{t.feedbackSub}</p>
+          <textarea
+            value={feedbackContent}
+            onChange={(e) => setFeedbackContent(e.target.value.slice(0, 300))}
+            placeholder={t.feedbackPlaceholder}
+            className="w-full h-40 p-4 rounded-2xl border border-slate-200 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 outline-none transition-all resize-none text-slate-700 bg-slate-50/50"
+          />
+          <div className="flex items-center justify-between">
+            <span className={`text-xs ${feedbackContent.length >= 300 ? "text-red-500" : "text-slate-400"}`}>
+              {feedbackContent.length}/300
+            </span>
+            <button
+              onClick={handleFeedbackSubmit}
+              disabled={!feedbackContent.trim() || isSubmittingFeedback}
+              className={`px-6 py-2.5 rounded-xl font-semibold transition-all flex items-center gap-2 ${
+                !feedbackContent.trim() || isSubmittingFeedback
+                  ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                  : "bg-slate-900 text-white hover:bg-slate-800"
+              }`}
+            >
+              {isSubmittingFeedback ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  {t.feedbackSending}
+                </>
+              ) : (
+                t.feedbackSubmit
+              )}
+            </button>
+          </div>
+          
+          <AnimatePresence>
+            {feedbackStatus !== "none" && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className={`p-3 rounded-xl text-center text-sm font-medium ${
+                  feedbackStatus === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+                }`}
+              >
+                {feedbackStatus === "success" ? t.feedbackSuccess : t.feedbackError}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </Modal>
 

@@ -7,6 +7,34 @@ import epubGenerator from "epub-gen-memory";
 import { fileURLToPath } from "url";
 import iconv from "iconv-lite";
 import jschardet from "jschardet";
+import { createClient } from "@libsql/client";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+// Turso client initialization
+const turso = createClient({
+  url: process.env.TURSO_DB_URL || "file:local.db",
+  authToken: process.env.TURSO_DB_AUTH_TOKEN,
+});
+
+// Initialize database
+async function initDb() {
+  try {
+    await turso.execute(`
+      CREATE TABLE IF NOT EXISTS feedback (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        content TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log("Database initialized (feedback table ready)");
+  } catch (err) {
+    console.error("Database initialization failed:", err);
+  }
+}
+
+initDb();
 
 // Fix for epub-gen-memory in ESM
 const generateEpub = (options: any, chapters: any) => {
@@ -142,6 +170,30 @@ async function startServer() {
       res.status(500).json({ 
         error: error instanceof Error ? error.message : "转换失败，请确保文件格式正确且未加密。" 
       });
+    }
+  });
+
+  // API Route: Feedback
+  app.post("/api/feedback", async (req, res) => {
+    try {
+      const { content } = req.body;
+      if (!content || typeof content !== "string") {
+        return res.status(400).json({ error: "留言内容不能为空" });
+      }
+      
+      if (content.length > 300) {
+        return res.status(400).json({ error: "留言字数不能超过300字" });
+      }
+
+      await turso.execute({
+        sql: "INSERT INTO feedback (content) VALUES (?)",
+        args: [content]
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Feedback submission error:", error);
+      res.status(500).json({ error: "提交留言失败，请稍后重试" });
     }
   });
 
