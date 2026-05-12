@@ -94,8 +94,8 @@ export default function App() {
       }
     }
 
-    if (file.size > 4 * 1024 * 1024) {
-      setError("文件太大（超过 4MB）。由于服务器限制，请尝试拆分文件或压缩后再试。");
+    if (file.size > 4.5 * 1024 * 1024) {
+      setError("文件太大（超过 4.5MB）。为了保证转换速度和服务器稳定性，建议拆分后上传。");
       return;
     }
 
@@ -332,7 +332,7 @@ export default function App() {
                           <Upload className={isDragging ? "text-orange-500" : "text-slate-400 group-hover:text-slate-600"} size={28} />
                         </div>
                         <p className="font-medium text-slate-700 mb-1">点击或拖拽 TXT 文件到此处</p>
-                        <p className="text-sm text-slate-400">支持最大 10MB 的纯文本文件</p>
+                        <p className="text-sm text-slate-400">支持最大 4.5MB 的纯文本文件</p>
                         <input 
                           type="file" 
                           ref={fileInputRef}
