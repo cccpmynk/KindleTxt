@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, BookOpen, Smartphone, Sparkles, Image as ImageIcon } from "lucide-react";
+import JSZip from "jszip";
+import jschardet from "jschardet";
+import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, BookOpen, Smartphone, Sparkles, Image as ImageIcon, Info } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 /**
@@ -14,6 +16,7 @@ export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [showGuide, setShowGuide] = useState(false);
@@ -32,10 +35,6 @@ export default function App() {
     }
     
     setFile(selectedFile);
-    if (selectedFile.size > 4.5 * 1024 * 1024) {
-      setError("文件太大（超过 4.5MB）。为了保证转换速度和服务器稳定性，建议拆分后上传。");
-    }
-    
     setStatus("idle");
   };
 
@@ -101,8 +100,103 @@ export default function App() {
     }
 
     if (file.size > 4.5 * 1024 * 1024) {
-      setError("文件太大（超过 4.5MB）。为了保证转换速度和服务器稳定性，建议拆分后上传。");
-      return;
+      setStatus("converting");
+      setBatchProgress({ current: 0, total: -1 });
+      
+      // Delay to allow UI to update to parsing state before synchronous blocking operations
+      await new Promise(resolve => setTimeout(resolve, 60));
+
+      try {
+        const buffer = await file.arrayBuffer();
+        const uint8Array = new Uint8Array(buffer);
+        
+        let detectedEncoding = "utf-8";
+        try {
+          const sampleSize = Math.min(uint8Array.length, 500000);
+          const sample = uint8Array.slice(0, sampleSize);
+          let str = "";
+          for (let i = 0; i < sample.length; i += 4096) {
+            str += String.fromCharCode.apply(null, Array.from(sample.slice(i, i + 4096)));
+          }
+          const detected = jschardet.detect(str);
+          if (detected && detected.encoding) {
+            detectedEncoding = detected.encoding.toLowerCase();
+          }
+        } catch (e) {
+          console.warn("jschardet detection failed", e);
+        }
+
+        if (detectedEncoding === "ascii" || detectedEncoding.includes("windows-1252") || detectedEncoding.includes("windows-1251")) detectedEncoding = "utf-8";
+        if (detectedEncoding.includes("gb")) detectedEncoding = "gb18030";
+        if (detectedEncoding === "big5") detectedEncoding = "big5";
+        
+        let text = "";
+        try {
+          const decoder = new TextDecoder(detectedEncoding);
+          text = decoder.decode(uint8Array);
+        } catch (e) {
+          console.warn("TextDecoder failed, using utf-8 fallback");
+          const decoder = new TextDecoder("utf-8");
+          text = decoder.decode(uint8Array);
+        }
+
+        const lines = text.split('\n');
+        const chunks = [];
+        let currentChunk = [];
+        let currentSize = 0;
+        const TARGET_SIZE = 3.5 * 1024 * 1024; // 3.5MB
+
+        for (const line of lines) {
+          const lineSize = new Blob([line + '\n']).size;
+          if (currentSize + lineSize > TARGET_SIZE && currentChunk.length > 0) {
+            chunks.push(new Blob(currentChunk, { type: "text/plain" }));
+            currentChunk = [];
+            currentSize = 0;
+          }
+          currentChunk.push(line + '\n');
+          currentSize += lineSize;
+        }
+        if (currentChunk.length > 0) {
+          chunks.push(new Blob(currentChunk, { type: "text/plain" }));
+        }
+
+        const zip = new JSZip();
+        for (let i = 0; i < chunks.length; i++) {
+          setBatchProgress({ current: i + 1, total: chunks.length });
+          const formData = new FormData();
+          const chunkFile = new File([chunks[i]], `${file.name.replace(/\.txt$/i, "")}_part${i + 1}.txt`, { type: "text/plain" });
+          formData.append("file", chunkFile);
+          formData.append("format", outputFormat);
+          if (generatedCoverBase64) {
+            formData.append("coverImage", generatedCoverBase64);
+          }
+
+          const response = await fetch("/api/convert", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`第 ${i + 1} 部分转换失败`);
+          }
+          const blob = await response.blob();
+          zip.file(`${file.name.replace(/\.txt$/i, "")}_part${i + 1}.${outputFormat}`, blob);
+        }
+
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        const url = window.URL.createObjectURL(zipBlob);
+        setDownloadUrl(url);
+        setStatus("success");
+        setBatchProgress({ current: 0, total: 0 });
+        return;
+      } catch (err) {
+        console.error(err);
+        setError(err instanceof Error ? err.message : "分卷转换过程中发生故障");
+        setStatus("error");
+        setBatchProgress({ current: 0, total: 0 });
+        return;
+      }
     }
 
     setStatus("converting");
@@ -155,6 +249,7 @@ export default function App() {
     setStatus("idle");
     setError(null);
     setDownloadUrl(null);
+    setBatchProgress({ current: 0, total: 0 });
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -361,7 +456,6 @@ export default function App() {
                             <h3 className={`font-medium truncate ${error ? "text-red-900" : "text-slate-900"}`}>{file.name}</h3>
                             <p className={`text-sm ${error ? "text-red-600" : "text-slate-500"}`}>
                               {(file.size / 1024 / 1024).toFixed(2)} MB
-                              {error && <span className="ml-2 font-semibold">（超出限制）</span>}
                             </p>
                           </div>
                           <button 
@@ -376,6 +470,13 @@ export default function App() {
                           <div className="mb-6 p-4 bg-red-50/50 rounded-2xl border border-red-100/50 flex gap-3 text-red-800 text-sm text-left">
                             <AlertCircle size={18} className="shrink-0 mt-0.5" />
                             <p>{error}</p>
+                          </div>
+                        )}
+
+                        {file.size > 4.5 * 1024 * 1024 && !error && status === "idle" && (
+                          <div className="mb-6 p-4 bg-blue-50/50 rounded-2xl border border-blue-100/50 flex gap-3 text-blue-800 text-sm text-left">
+                            <Info size={18} className="shrink-0 mt-0.5" />
+                            <p>该文件较大，系统将自动将其平均拆分为多个较小的分卷（约 3.5MB 每卷）进行转换，并最终打包为一个 ZIP 文件供您下载。</p>
                           </div>
                         )}
                         
@@ -427,7 +528,7 @@ export default function App() {
                               : "bg-slate-900 text-white hover:bg-slate-800 shadow-slate-200"
                           }`}
                         >
-                          {error ? "文件超过限制" : "开始转换"}
+                          {error ? "文件错误" : (file.size > 4.5 * 1024 * 1024 ? "开始批量转换" : "开始转换")}
                           {!error && <Download size={18} className="group-hover:translate-y-0.5 transition-transform" />}
                         </button>
                       </div>
@@ -452,12 +553,15 @@ export default function App() {
                       )}
                     </div>
                     <h3 className="text-xl font-semibold mb-2">
-                      {status === "generating_cover" ? "正在绘制封面..." : "正在转换..."}
+                        {status === "generating_cover" ? "正在绘制封面..." : 
+                         (batchProgress.total > 0 ? `正在转换 (分卷 ${batchProgress.current}/${batchProgress.total})...` : 
+                          batchProgress.total === -1 ? "系统正在准备中..." : "正在转换...")}
                     </h3>
                     <p className="text-slate-500 text-center max-w-xs">
                       {status === "generating_cover" 
                         ? "AI 正在根据书名为您生成精美的封面配图，请稍候。" 
-                        : "正在为您识别章节并重新排版，这可能需要几秒钟时间。"}
+                        : (batchProgress.total > 0 ? "正在按照分卷逐一为您转换和排版，请耐心等待。" : 
+                           batchProgress.total === -1 ? "请您稍等片刻……" : "正在为您识别章节并重新排版，这可能需要几秒钟时间。")}
                     </p>
                   </motion.div>
                 )}
@@ -479,10 +583,10 @@ export default function App() {
                     <div className="flex flex-col gap-3 w-full">
                       <a 
                         href={downloadUrl!} 
-                        download={`${file?.name.replace(".txt", "")}.epub`}
+                        download={file && file.size > 4.5 * 1024 * 1024 ? `${file?.name.replace(".txt", "")}_converted.zip` : `${file?.name.replace(".txt", "")}.${outputFormat}`}
                         className="w-full bg-green-600 text-white py-4 rounded-xl font-semibold hover:bg-green-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-green-100"
                       >
-                        立即下载 EPUB
+                        {file && file.size > 4.5 * 1024 * 1024 ? "立即下载 ZIP" : `立即下载 ${outputFormat.toUpperCase()}`}
                         <Download size={18} />
                       </a>
                       <button 

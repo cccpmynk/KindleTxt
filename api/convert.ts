@@ -37,7 +37,9 @@ app.post("/api/convert", upload.single("file"), async (req: any, res: any) => {
     const buffer = req.file.buffer;
     const detected = jschardet.detect(buffer);
     let encoding = detected.encoding || "utf-8";
-    if (encoding.toLowerCase() === "ascii") encoding = "utf-8";
+    if (encoding.toLowerCase() === "ascii" || encoding.toLowerCase() === "windows-1252" || encoding.toLowerCase() === "windows-1251") encoding = "utf-8";
+    if (encoding.toLowerCase().includes("gb")) encoding = "gb18030";
+    if (encoding.toLowerCase() === "big5") encoding = "big5";
     
     let fileContent = "";
     try {
