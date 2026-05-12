@@ -24,12 +24,18 @@ export default function App() {
   const [outputFormat, setOutputFormat] = useState<"epub" | "azw3">("epub");
 
   const processFile = (selectedFile: File) => {
+    setError(null);
     if (selectedFile.type !== "text/plain" && !selectedFile.name.toLowerCase().endsWith(".txt")) {
       setError("目前仅支持 TXT 格式文件。");
+      setFile(null);
       return;
     }
+    
     setFile(selectedFile);
-    setError(null);
+    if (selectedFile.size > 4.5 * 1024 * 1024) {
+      setError("文件太大（超过 4.5MB）。为了保证转换速度和服务器稳定性，建议拆分后上传。");
+    }
+    
     setStatus("idle");
   };
 
@@ -343,13 +349,20 @@ export default function App() {
                       </div>
                     ) : (
                       <div className="w-full">
-                        <div className="flex items-center gap-4 bg-slate-50 p-6 rounded-2xl border border-slate-100 mb-6">
-                          <div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-slate-400">
-                            <FileText size={20} />
+                        <div className={`flex items-center gap-4 p-6 rounded-2xl border mb-6 transition-colors ${
+                          error ? "bg-red-50 border-red-100" : "bg-slate-50 border-slate-100"
+                        }`}>
+                          <div className={`w-12 h-12 rounded-xl shadow-sm flex items-center justify-center transition-colors ${
+                            error ? "bg-white text-red-500" : "bg-white text-slate-400"
+                          }`}>
+                            {error ? <AlertCircle size={20} /> : <FileText size={20} />}
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <h3 className="font-medium text-slate-900 truncate">{file.name}</h3>
-                            <p className="text-sm text-slate-500">{(file.size / 1024).toFixed(1)} KB</p>
+                          <div className="flex-1 min-w-0 text-left">
+                            <h3 className={`font-medium truncate ${error ? "text-red-900" : "text-slate-900"}`}>{file.name}</h3>
+                            <p className={`text-sm ${error ? "text-red-600" : "text-slate-500"}`}>
+                              {(file.size / 1024 / 1024).toFixed(2)} MB
+                              {error && <span className="ml-2 font-semibold">（超出限制）</span>}
+                            </p>
                           </div>
                           <button 
                             onClick={reset}
@@ -358,6 +371,13 @@ export default function App() {
                             移除
                           </button>
                         </div>
+
+                        {error && status === "idle" && (
+                          <div className="mb-6 p-4 bg-red-50/50 rounded-2xl border border-red-100/50 flex gap-3 text-red-800 text-sm text-left">
+                            <AlertCircle size={18} className="shrink-0 mt-0.5" />
+                            <p>{error}</p>
+                          </div>
+                        )}
                         
                         <div className="flex flex-col gap-3 mb-6">
                           <label className="text-sm font-semibold text-slate-700 block text-left">选择输出格式：</label>
@@ -400,10 +420,15 @@ export default function App() {
 
                         <button 
                           onClick={handleUpload}
-                          className="w-full bg-slate-900 text-white py-4 rounded-xl font-semibold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 group shadow-lg shadow-slate-200"
+                          disabled={!!error}
+                          className={`w-full py-4 rounded-xl font-semibold flex items-center justify-center gap-2 group shadow-lg transition-all ${
+                            error 
+                              ? "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none" 
+                              : "bg-slate-900 text-white hover:bg-slate-800 shadow-slate-200"
+                          }`}
                         >
-                          开始转换
-                          <Download size={18} className="group-hover:translate-y-0.5 transition-transform" />
+                          {error ? "文件超过限制" : "开始转换"}
+                          {!error && <Download size={18} className="group-hover:translate-y-0.5 transition-transform" />}
                         </button>
                       </div>
                     )}
