@@ -20,7 +20,7 @@ export default function App() {
   const [showFAQ, setShowFAQ] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [useAICover, setUseAICover] = useState(true);
+  const [useAICover, setUseAICover] = useState(false);
   const [outputFormat, setOutputFormat] = useState<"epub" | "azw3">("epub");
 
   const processFile = (selectedFile: File) => {

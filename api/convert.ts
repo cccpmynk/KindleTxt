@@ -49,12 +49,11 @@ app.post("/api/convert", upload.single("file"), async (req: any, res: any) => {
     const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
     const fileName = originalName.replace(/\.txt$/i, "");
     
-    // AZW3 handling
-    if (req.body.format === "azw3") {
-      return res.status(400).json({
-        error: "当前环境不支持直接生成 AZW3 (缺少 KindleGen 支持)。老款 Kindle 请放心发送 EPUB 文件至设备的 Send to Kindle 邮箱，亚马逊云端会自动将其转换为支持的 AZW3 格式并下发至您的设备。"
-      });
-    }
+    // AZW3 handling - removing the error per user request,
+    // it will now generate an EPUB file as a fallback, which is accepted
+    // by Send to Kindle and converted by Amazon.
+    let isAzw3Requested = req.body.format === "azw3";
+    let outputFileName = isAzw3Requested ? `${fileName}_需要使用SendToKindle发送` : fileName;
 
     // Better chapter detection logic using capturing groups
     const chapterRegex = /((?:^|\n)\s*(?:第[一二三四五六七八九十百千万\d]+[章节回]|[Cc]hapter\s+\d+).*)/g;
@@ -93,7 +92,7 @@ app.post("/api/convert", upload.single("file"), async (req: any, res: any) => {
 
     const formDataCover = req.body.coverImage;
     const option = {
-      title: fileName,
+      title: outputFileName,
       author: "KindleTxt Converter",
       publisher: "KindleTxt",
       cover: formDataCover || `https://placehold.co/600x800/1e293b/FFFFFF.png?text=${encodeURIComponent(fileName)}`
@@ -107,7 +106,7 @@ app.post("/api/convert", upload.single("file"), async (req: any, res: any) => {
     const epubBuffer = await generateEpub(option, epubChapters);
     
     res.setHeader("Content-Type", "application/epub+zip");
-    const safeName = encodeURIComponent(fileName) + ".epub";
+    const safeName = encodeURIComponent(outputFileName) + ".epub";
     res.setHeader("Content-Disposition", `attachment; filename="${safeName}"; filename*=UTF-8''${safeName}`);
     res.send(epubBuffer);
   } catch (error) {
