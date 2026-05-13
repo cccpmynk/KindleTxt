@@ -34,6 +34,7 @@ const translations = {
     guideStep2: "在首页点击上传区域，或者直接将文件拖拽进来。",
     guideStep3: "点击“开始转换”。我们会自动为您识别章节（如：第一章、Chapter 1等）并生成电子书目录。",
     guideStep4: "下载生成的 EPUB 文件。您可以通过电缆复制到 Kindle，或使用亚马逊官方的 Send to Kindle 服务发送。",
+    guideStep5: "重要：若要在 Kindle 上看到您选定的字体，请在 Kindle 阅读页面点击「Aa」-「字体」，选择「出版者字体」(Publisher Font)。",
     faqTitle: "❓ 常见问题",
     faqQ1: "为什么转换后是 EPUB 而不是 AZW3？",
     faqA1: "亚马逊官方自2022年起已经全面支持 EPUB 格式，并且现在的 Kindle 已经停止支持通过邮件发送 MOBI。EPUB 具有更好的兼容性和排版效果，是目前最推荐的格式。",
@@ -90,6 +91,11 @@ const translations = {
     feedbackSuccess: "提交成功，感谢您的建议！",
     feedbackError: "提交失败，请稍后重试",
     feedbackSending: "正在提交...",
+    selectFont: "选择排版字体：",
+    fontDefault: "系统默认 (推荐)",
+    fontSerif: "宋体 (衬线体)",
+    fontSans: "苹方 (无衬线体)",
+    fontKaiti: "楷体 (手写感)",
   },
   en: {
     guide: "Guide",
@@ -111,6 +117,7 @@ const translations = {
     guideStep2: "Click the upload area on the home page or directly drag and drop the file.",
     guideStep3: "Click 'Start Conversion'. We will automatically recognize chapters (e.g., Chapter 1, Section 1) and generate a Table of Contents.",
     guideStep4: "Download the generated EPUB file. You can copy it to Kindle via cable or use Amazon's official 'Send to Kindle' service.",
+    guideStep5: "Important: To see your selected font on Kindle, tap 'Aa' - 'Font' and select 'Publisher Font' while reading.",
     faqTitle: "❓ Frequently Asked Questions",
     faqQ1: "Why EPUB instead of AZW3?",
     faqA1: "Amazon has fully supported the EPUB format since 2022, and modern Kindles no longer support sending MOBI via email. EPUB offers better compatibility and layout quality.",
@@ -158,7 +165,12 @@ const translations = {
     serverError: "File too large for server processing (4.5MB limit)",
     batchError: "An error occurred during batch conversion.",
     partFailed: "Part failed to convert",
-    modalClose: "Got it"
+    modalClose: "Got it",
+    selectFont: "Select Body Font:",
+    fontDefault: "System Default (Best)",
+    fontSerif: "Serif (Songti)",
+    fontSans: "Sans-serif (PingFang)",
+    fontKaiti: "Kaiti (Handwriting)",
   }
 };
 
@@ -217,6 +229,7 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [useAICover, setUseAICover] = useState(false);
   const [outputFormat, setOutputFormat] = useState<"epub" | "azw3">("epub");
+  const [fontFamily, setFontFamily] = useState<"default" | "serif" | "sans" | "kaiti">("default");
   
   const [feedbackContent, setFeedbackContent] = useState("");
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
@@ -374,6 +387,7 @@ export default function App() {
           const chunkFile = new File([chunks[i]], `${file.name.replace(/\.txt$/i, "")}_part${i + 1}.txt`, { type: "text/plain" });
           formData.append("file", chunkFile);
           formData.append("format", outputFormat);
+          formData.append("fontFamily", fontFamily);
           if (generatedCoverBase64) {
             formData.append("coverImage", generatedCoverBase64);
           }
@@ -410,6 +424,7 @@ export default function App() {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("format", outputFormat);
+    formData.append("fontFamily", fontFamily);
     if (generatedCoverBase64) {
       formData.append("coverImage", generatedCoverBase64);
     }
@@ -558,6 +573,10 @@ export default function App() {
           <div className="flex gap-4">
             <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0 font-bold text-slate-900">4</div>
             <p>{t.guideStep4}</p>
+          </div>
+          <div className="flex gap-4">
+            <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center shrink-0 font-bold text-indigo-600">5</div>
+            <p className="font-medium text-slate-900">{t.guideStep5}</p>
           </div>
         </div>
       </Modal>
@@ -756,6 +775,30 @@ export default function App() {
                             >
                               AZW3 ({lang === "zh" ? "老款" : "Legacy"})
                             </button>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-3 mb-6">
+                          <label className="text-sm font-semibold text-slate-700 block text-left">{t.selectFont}</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            {[
+                              { id: "default", label: t.fontDefault },
+                              { id: "serif", label: t.fontSerif },
+                              { id: "sans", label: t.fontSans },
+                              { id: "kaiti", label: t.fontKaiti },
+                            ].map((f) => (
+                              <button
+                                key={f.id}
+                                onClick={() => setFontFamily(f.id as any)}
+                                className={`py-2.5 px-3 text-xs font-medium rounded-xl border transition-all text-center ${
+                                  fontFamily === f.id
+                                    ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                                    : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50"
+                                }`}
+                              >
+                                {f.label}
+                              </button>
+                            ))}
                           </div>
                         </div>
 

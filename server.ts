@@ -142,11 +142,33 @@ async function startServer() {
       }
 
       const formDataCover = req.body.coverImage;
+      const fontFamily = req.body.fontFamily || "default";
+
+      let fontValue = "inherit";
+      switch (fontFamily) {
+        case "serif":
+          fontValue = '"Noto Serif SC", "STSong", "Songti SC", "SimSun", serif';
+          break;
+        case "sans":
+          fontValue = '"PingFang SC", "Noto Sans SC", "STHeiti", "Heiti SC", "Microsoft YaHei", sans-serif';
+          break;
+        case "kaiti":
+          fontValue = '"STKaiti", "Kaiti SC", "KaiTi", "楷体", serif';
+          break;
+      }
+
+      const customCss = `
+        body, p, div, span { font-family: ${fontValue} !important; }
+        p { text-indent: 2em; margin: 0.8em 0; line-height: 1.75; text-align: justify; }
+        h1, h2, h3 { text-align: center; margin-top: 2em; font-family: ${fontValue} !important; }
+      `;
+
       const option = {
         title: outputFileName,
         author: "KindleTxt Converter",
         publisher: "KindleTxt",
-        cover: formDataCover || `https://placehold.co/600x800/1e293b/FFFFFF.png?text=${encodeURIComponent(fileName)}`
+        cover: formDataCover || `https://placehold.co/600x800/1e293b/FFFFFF.png?text=${encodeURIComponent(fileName)}`,
+        css: customCss
       };
 
       const epubChapters = chapters.map(ch => ({
