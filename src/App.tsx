@@ -69,7 +69,9 @@ const translations = {
     downloadZip: "立即下载 ZIP",
     downloadLabel: "立即下载",
     convertAnother: "转换另一个文件",
-    kindleTip: "Kindle 提示：使用官方的 Send to Kindle 网页端，或发送邮件到设备专属邮箱即可推送至设备，效果极佳。",
+    kindleTipPrefix: "Kindle 提示：使用官方的 ",
+    kindleTipLink: "Send to Kindle",
+    kindleTipSuffix: " 网页端，或发送邮件到设备专属邮箱即可推送至设备，效果极佳。点击上方链接可直接跳转。",
     errorTitle: "出错了",
     btnRetry: "返回重试",
     feature1Title: "多设备适配",
@@ -152,7 +154,9 @@ const translations = {
     downloadZip: "Download ZIP",
     downloadLabel: "Download",
     convertAnother: "Convert another file",
-    kindleTip: "Kindle Tip: Use official Send to Kindle web interface or email to push files wirelessly for the best experience.",
+    kindleTipPrefix: "Kindle Tip: Use the official ",
+    kindleTipLink: "Send to Kindle",
+    kindleTipSuffix: " web interface or email to push files wirelessly for the best experience. Click the link above to visit.",
     errorTitle: "Something went wrong",
     btnRetry: "Back & Retry",
     feature1Title: "Multi-device Support",
@@ -923,10 +927,21 @@ export default function App() {
                       </button>
                     </div>
 
-                    <div className="mt-8 p-4 bg-amber-50 rounded-2xl border border-amber-100/50 flex gap-3 text-amber-900 text-sm italic">
-                      <AlertCircle size={18} className="shrink-0" />
+                    <div className="mt-8 p-5 bg-indigo-50 rounded-2xl border border-indigo-100/50 flex gap-4 text-indigo-900 text-sm leading-relaxed">
+                      <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
+                        <Smartphone size={18} className="text-indigo-600" />
+                      </div>
                       <p>
-                        {t.kindleTip}
+                        {t.kindleTipPrefix}
+                        <a 
+                          href="https://www.amazon.com/sendtokindle" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="font-bold underline decoration-2 underline-offset-2 hover:text-indigo-600 transition-colors"
+                        >
+                          {t.kindleTipLink}
+                        </a>
+                        {t.kindleTipSuffix}
                       </p>
                     </div>
                   </motion.div>
