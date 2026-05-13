@@ -100,7 +100,7 @@ app.post("/api/convert", upload.single("file"), async (req: any, res: any) => {
     const hasChinese = /[\u4e00-\u9fa5]/.test(fileContent.slice(0, 10000));
     const lang = hasChinese ? "zh" : "en";
 
-    let fontValue = "inherit";
+    let fontValue = "";
     switch (fontFamily) {
       case "serif":
         fontValue = '"Noto Serif SC", "STSong", "Songti SC", "SimSun", serif';
@@ -114,9 +114,9 @@ app.post("/api/convert", upload.single("file"), async (req: any, res: any) => {
     }
 
     const customCss = `
-      body, p, div, span { font-family: ${fontValue} !important; }
+      ${fontValue ? `body, p, div, span { font-family: ${fontValue} !important; }` : ''}
       p { text-indent: 2em; margin: 0.8em 0; line-height: 1.75; text-align: justify; }
-      h1, h2, h3 { text-align: center; margin-top: 2em; font-family: ${fontValue} !important; }
+      h1, h2, h3 { text-align: center; margin-top: 2em; ${fontValue ? `font-family: ${fontValue} !important;` : ''} }
     `;
 
     const option = {

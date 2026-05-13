@@ -46,6 +46,8 @@ const translations = {
     faqA4: "绝对安全。本工具在服务器内存中完成转换，所有数据在转换完成后立即从内存中销毁，我们不会在任何地方存储您的书稿。",
     faqQ5: "章节识别不准确是怎么回事？",
     faqA5: "我们通过正则匹配常见的章节标识。如果您的文档章节格式非常特殊，可能无法识别。建议确保章节名单独占一行。",
+    faqQ6: "为什么在 Kindle 手机版里无法调整字体粗细？",
+    faqA6: "当您在转换时选择了特定的排版字体（如苹方、宋体），Kindle 会以“出版者字体”模式运行，由于系统兼容性限制，此时往往会禁用其原生的粗细调整功能。如果您想拥有完整的加粗控制自由，请在转换时选择“系统默认”，这样在阅读时就可以自由切换 Kindle 内置字体并调整粗细。",
     mainTitle: "让阅读回归纯粹",
     mainSub: "将您的本地 TXT 文档轻松转换为 Kindle 支持的最佳格式 (EPUB)，自动章节识别，极致排版体验。",
     dropZone: "点击或拖拽 TXT 文件到此处",
@@ -131,6 +133,8 @@ const translations = {
     faqA4: "Absolutely. All conversions are performed in the server's memory and destroyed immediately after. We do not store your manuscripts anywhere.",
     faqQ5: "Why is chapter recognition inaccurate?",
     faqA5: "We use regex to match common chapter patterns. If your document has unusual formatting, it might not be recognized. Ensure chapter titles are on their own lines.",
+    faqQ6: "Why can't I adjust font weight in the Kindle app?",
+    faqA6: "When you select a specific font (like PingFang or Songti), Kindle operates in 'Publisher Font' mode. Due to system compatibility, this often disables the app's native thickness adjustment. For full control over boldness, please choose 'System Default' during conversion to use Kindle's built-in fonts.",
     mainTitle: "Pure Reading Experience",
     mainSub: "Effortlessly convert your local TXT documents to the best format for Kindle (EPUB), with smart chapter recognition and clean layout.",
     dropZone: "Click or drag TXT file here",
@@ -607,6 +611,10 @@ export default function App() {
           <div>
             <h4 className="font-bold text-slate-900 mb-2">{t.faqQ5}</h4>
             <p>{t.faqA5}</p>
+          </div>
+          <div className="pt-4 border-t border-slate-100">
+            <h4 className="font-bold text-slate-900 mb-2">{t.faqQ6}</h4>
+            <p className="text-sm bg-indigo-50 p-3 rounded-xl text-indigo-900">{t.faqA6}</p>
           </div>
         </div>
       </Modal>
