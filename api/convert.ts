@@ -96,6 +96,10 @@ app.post("/api/convert", upload.single("file"), async (req: any, res: any) => {
     const formDataCover = req.body.coverImage;
     const fontFamily = req.body.fontFamily || "default";
 
+    // Detect language
+    const hasChinese = /[\u4e00-\u9fa5]/.test(fileContent.slice(0, 10000));
+    const lang = hasChinese ? "zh" : "en";
+
     let fontValue = "inherit";
     switch (fontFamily) {
       case "serif":
@@ -119,6 +123,7 @@ app.post("/api/convert", upload.single("file"), async (req: any, res: any) => {
       title: outputFileName,
       author: "KindleTxt Converter",
       publisher: "KindleTxt",
+      lang: lang,
       cover: formDataCover || `https://placehold.co/600x800/1e293b/FFFFFF.png?text=${encodeURIComponent(fileName)}`,
       css: customCss
     };
