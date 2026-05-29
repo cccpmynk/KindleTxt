@@ -119,12 +119,31 @@ app.post("/api/convert", upload.single("file"), async (req: any, res: any) => {
       h1, h2, h3 { text-align: center; margin-top: 2em; ${fontValue ? `font-family: ${fontValue} !important;` : ''} }
     `;
 
+    let coverOption: any = undefined;
+    if (formDataCover && formDataCover.startsWith("data:image/")) {
+      try {
+        const parts = formDataCover.split(",");
+        const base64Data = parts[1];
+        const mimeMatch = parts[0].match(/data:(image\/[a-zA-Z+]+);base64/);
+        const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+        const extension = mimeType.split("/")[1] || "jpg";
+        const buf = Buffer.from(base64Data, "base64");
+        coverOption = new File([buf], `cover.${extension}`, { type: mimeType });
+      } catch (err) {
+        console.error("Failed to parse cover image:", err);
+      }
+    }
+
+    if (!coverOption) {
+      coverOption = `https://placehold.co/600x800/1e293b/FFFFFF.png?text=${encodeURIComponent(fileName)}`;
+    }
+
     const option = {
       title: outputFileName,
       author: "KindleTxt Converter",
       publisher: "KindleTxt",
       lang: lang,
-      cover: formDataCover || `https://placehold.co/600x800/1e293b/FFFFFF.png?text=${encodeURIComponent(fileName)}`,
+      cover: coverOption,
       css: customCss
     };
 

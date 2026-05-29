@@ -219,6 +219,224 @@ const Modal = ({ title, isOpen, onClose, children }: { title: string, isOpen: bo
   </AnimatePresence>
 );
 
+// Helper functions for cover generation
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const isChinese = /[\u4e00-\u9fa5]/.test(text);
+  const words = isChinese ? text.split("") : text.split(" ");
+  const lines: string[] = [];
+  let currentLine = "";
+
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    const testLine = currentLine + (currentLine && !isChinese ? " " : "") + word;
+    const metrics = ctx.measureText(testLine);
+    if (metrics.width > maxWidth && i > 0) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  lines.push(currentLine);
+  return lines;
+}
+
+interface StyleInfo {
+  englishStyle: string;
+  chineseTheme: string;
+  accentColor: string;
+  bgGradientStart: string;
+  bgGradientEnd: string;
+}
+
+function getBookStyleInfo(title: string): StyleInfo {
+  const lowercaseTitle = title.toLowerCase();
+  
+  // 1. Sci-Fi / Space / Tech / Cyberpunk
+  const scifiKeywords = ['科幻', '未来', '太空', '星际', '宇宙', '机械', '量子', '光年', '智能', '科技', '代码', '程序', '异界', '系统', '网络', '数字', '末日', '病毒', '战舰', '星辉', '光速', '引力', '维度', '赛博', 'cyber', 'sci-fi', 'space', 'system'];
+  if (scifiKeywords.some(keyword => lowercaseTitle.includes(keyword))) {
+    return {
+      englishStyle: "abstract cyberpunk artwork, glowing neon cyan and purple grid, majestic deep space nebula with shimmering digital star dust, futuristic technology texture, cold metallic glow, synthwave digital painting",
+      chineseTheme: "科幻未来 (Sci-Fi & Tech)",
+      accentColor: "rgba(6, 182, 212, 0.95)", // Cyan-500
+      bgGradientStart: "#030712", // gray-950
+      bgGradientEnd: "#161b22" // sleek steel-dark
+    };
+  }
+
+  // 2. Traditional Wuxia / Xianxia / History / Ancient China
+  const traditionalKeywords = ['剑', '侠', '武', '仙', '道', '神', '鬼', '魔', '妖', '圣', '帝', '唐', '宋', '明', '汉', '秦', '朝', '传', '志', '录', '记', '卷', '纪', '古', '天下', '乾坤', '九天', '江湖', '修仙', '尊', '尘', '世', '劫', '山', '海', '雨', '墨', '风云', '无双'];
+  if (traditionalKeywords.some(keyword => lowercaseTitle.includes(keyword))) {
+    return {
+      englishStyle: "traditional elegant Chinese ink wash landscape painting style, ethereal misty mountains shrouded in soft clouds, subtle gold leaf foil textures, historic hand-painted oriental watercolor elements, zen minimalism, luxury atmospheric scroll theme",
+      chineseTheme: "古典仙侠 (Traditional & Fantasy)",
+      accentColor: "rgba(234, 179, 8, 0.95)", // Gold/Yellow-500
+      bgGradientStart: "#1c1917", // warm stone dark
+      bgGradientEnd: "#0c0a09"
+    };
+  }
+
+  // 3. Romance / Sweet / Healing / Youth
+  const romanceKeywords = ['情', '爱', '恋', '甜', '暖', '愈', '青春', '少女', '猫', '狗', '花', '夏', '秋', '春', '冬', '晴', '梦', '约定', '初恋', '星星', '眼泪', '心动', '温暖', '纸飞机', '物语', '告白', '歌', '草', '风吹'];
+  if (romanceKeywords.some(keyword => lowercaseTitle.includes(keyword))) {
+    return {
+      englishStyle: "dreamy healing warm soft pastel watercolor style, fluffy pale pink and cream clouds, gentle sunbeam light leaks, aesthetic botanical floral abstract pattern, comforting nostalgic storybook concept art, warm feelings",
+      chineseTheme: "治愈言情 (Romance & Healing)",
+      accentColor: "rgba(244, 63, 94, 0.95)", // Rose-500
+      bgGradientStart: "#2e1065", // dark violet
+      bgGradientEnd: "#1e1b4b" // dark navy
+    };
+  }
+
+  // 4. Mystery / Thriller / Dark / Gothic
+  const thrillerKeywords = ['悬疑', '惊悚', '推理', '罪', '谜', '暗', '黑', '夜', '雾', '影', '死', '血', '骨', '魂', '诡', '谎言', '尸', '深渊', '迷宫', '盲区', '凶手', '秘密', '夜深', '禁忌', '诅咒'];
+  if (thrillerKeywords.some(keyword => lowercaseTitle.includes(keyword))) {
+    return {
+      englishStyle: "brooding gothic atmospheric oil painting style, heavy mysterious fog rolling over a dark landscape, low key chiaroscuro dramatic lighting, abstract deep crimson stains and dark charcoal textures, eerie cinematic suspense concept art",
+      chineseTheme: "悬疑惊悚 (Mystery & Dark)",
+      accentColor: "rgba(239, 68, 68, 0.95)", // Red-500
+      bgGradientStart: "#09090b", // zinc-950
+      bgGradientEnd: "#18181b" // zinc-900
+    };
+  }
+
+  // 5. Academic / Business / Personal Growth / Classic Literature / Modern Cities
+  const classicKeywords = ['思维', '思考', '学', '法', '论', '思想', '经济', '金融', '管理', '商业', '投资', '资本', '市场', '法则', '科学', '社会', '世界', '人生', '智慧', '传记', '读本', '指南', '都市', '繁华', '孤独', '岁月', '时代'];
+  if (classicKeywords.some(keyword => lowercaseTitle.includes(keyword))) {
+    return {
+      englishStyle: "sophisticated premium modern editorial design style, crisp clean minimalist geometric abstract shapes, marble texture with elegant golden lines, deep warm navy and copper color palettes, fine art paper canvas background, executive luxury look",
+      chineseTheme: "社科经典 (Academic & Business)",
+      accentColor: "rgba(14, 165, 233, 0.95)", // Sky-500
+      bgGradientStart: "#0f172a", // slate-900
+      bgGradientEnd: "#1e293b" // slate-800
+    };
+  }
+
+  // Default theme
+  return {
+    englishStyle: "gorgeous elegant clean modern abstract painting style, beautiful organic flowing gradients, professional high-contrast color blocking, fine-art digital oil canvas texture",
+    chineseTheme: "精致纪实 (Modern Abstract)",
+    accentColor: "rgba(129, 140, 248, 0.95)", // Indigo-400
+    bgGradientStart: "#111827", // gray-900
+    bgGradientEnd: "#1f2937" // gray-800
+  };
+}
+
+function generateDefaultCover(bookTitle: string, backgroundImageSrc?: string): Promise<string> {
+  return new Promise((resolve) => {
+    const styleInfo = getBookStyleInfo(bookTitle);
+    const canvas = document.createElement("canvas");
+    canvas.width = 600;
+    canvas.height = 800;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      resolve("");
+      return;
+    }
+
+    const drawTypography = () => {
+      // Draw background dark semi-transparent overlay to ensure text contrast for backgrounds
+      if (backgroundImageSrc) {
+        ctx.fillStyle = "rgba(15, 23, 42, 0.55)"; // slate-900 with 55% opacity
+        ctx.fillRect(0, 0, 600, 800);
+      }
+
+      // Draw inner borders
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(30, 30, 540, 740);
+
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(36, 36, 528, 728);
+
+      // Setup shadows for maximum text readability on arbitrary backgrounds
+      ctx.shadowColor = "rgba(0, 0, 0, 0.75)";
+      ctx.shadowBlur = 8;
+      ctx.shadowOffsetX = 1;
+      ctx.shadowOffsetY = 1;
+
+      // Draw Header text
+      ctx.fillStyle = "rgba(241, 245, 249, 0.9)";
+      ctx.font = '500 16px "PingFang SC", "Noto Sans SC", sans-serif';
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("K I N D L E T X T   E B O O K", 300, 100);
+
+      // Draw Title text
+      ctx.fillStyle = "#ffffff";
+      
+      // Set appropriate font size depending on title length for better poster style layout
+      let fontSize = 48;
+      if (bookTitle.length > 15) {
+        fontSize = 36;
+      } else if (bookTitle.length > 8) {
+        fontSize = 44;
+      } else {
+        fontSize = 54;
+      }
+      ctx.font = `bold ${fontSize}px "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif`;
+      
+      const lines = wrapText(ctx, bookTitle, 460);
+      const lineHeight = fontSize * 1.45;
+      const totalHeight = lines.length * lineHeight;
+      let startY = 380 - (totalHeight / 2);
+      if (startY < 180) startY = 180;
+
+      lines.forEach((line, index) => {
+        ctx.fillText(line, 300, startY + index * lineHeight);
+      });
+
+      // Draw decorative line
+      const accentY = startY + totalHeight + 35;
+      ctx.fillStyle = styleInfo.accentColor;
+      ctx.fillRect(250, accentY, 100, 3);
+
+      // Draw Footer text
+      ctx.fillStyle = "rgba(241, 245, 249, 0.85)";
+      ctx.font = 'italic 15px "PingFang SC", "Noto Sans SC", sans-serif';
+      ctx.fillText("精心排版 · 专属阅读", 300, 700);
+
+      // Reset shadows
+      ctx.shadowColor = "transparent";
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+
+      resolve(canvas.toDataURL("image/jpeg", 0.95));
+    };
+
+    if (backgroundImageSrc) {
+      const img = new Image();
+      if (!backgroundImageSrc.startsWith("data:")) {
+        img.crossOrigin = "anonymous";
+      }
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, 600, 800);
+        drawTypography();
+      };
+      img.onerror = () => {
+        // Fallback to solid gradient from theme if image load fails
+        const gradient = ctx.createLinearGradient(0, 0, 0, 800);
+        gradient.addColorStop(0, styleInfo.bgGradientStart);
+        gradient.addColorStop(1, styleInfo.bgGradientEnd);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 600, 800);
+        drawTypography();
+      };
+      img.src = backgroundImageSrc;
+    } else {
+      // Draw solid gradient background from theme details
+      const gradient = ctx.createLinearGradient(0, 0, 0, 800);
+      gradient.addColorStop(0, styleInfo.bgGradientStart);
+      gradient.addColorStop(1, styleInfo.bgGradientEnd);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, 600, 800);
+      drawTypography();
+    }
+  });
+}
+
 export default function App() {
   const [lang, setLang] = useState<"zh" | "en">("zh");
   const t = translations[lang];
@@ -302,23 +520,24 @@ export default function App() {
       setStatus("generating_cover");
       try {
         const bookName = file.name.replace(/\.txt$/i, "");
-        const promptString = `A minimalist, elegant and beautiful book cover design for a book titled "${bookName}". Clean and modern style, centered title, professional typography.`;
+        const styleInfo = getBookStyleInfo(bookName);
+        const promptString = `A gorgeous, elegant and clean abstract background illustration or textured art theme for a book cover. Style keyword: ${styleInfo.englishStyle}. Specific visual elements inspired by the title "${bookName}". Strictly NO text, NO letters, NO words, minimal style, empty space in the center, professional color palette, high resolution digital painting.`;
         
         // 使用免费免 Key 的图片生成服务
         const coverUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(promptString)}?width=600&height=800&nologo=true`;
-        
-        const imageRes = await fetch(coverUrl);
-        if (imageRes.ok) {
-          const imageBlob = await imageRes.blob();
-          const arrayBuffer = await imageBlob.arrayBuffer();
-          const base64 = btoa(
-            new Uint8Array(arrayBuffer)
-              .reduce((data, byte) => data + String.fromCharCode(byte), '')
-          );
-          generatedCoverBase64 = `data:${imageBlob.type || 'image/jpeg'};base64,${base64}`;
-        }
+        generatedCoverBase64 = await generateDefaultCover(bookName, coverUrl);
       } catch (err) {
         console.error("Failed to generate cover:", err);
+      }
+    }
+
+    // fallback generator for non-AI mode or failed AI fetch
+    if (!generatedCoverBase64) {
+      try {
+        const bookName = file.name.replace(/\.txt$/i, "");
+        generatedCoverBase64 = await generateDefaultCover(bookName);
+      } catch (err) {
+        console.error("Failed to generate default canvas cover:", err);
       }
     }
 
@@ -749,6 +968,22 @@ export default function App() {
                             {t.remove}
                           </button>
                         </div>
+
+                        {!error && file && (
+                          <div className="mb-6 p-4 bg-orange-50/40 rounded-2xl border border-orange-100/50 flex items-center gap-3 text-slate-700 text-sm text-left">
+                            <Sparkles size={18} className="text-orange-500 shrink-0" />
+                            <div>
+                              <p className="font-semibold text-slate-800">
+                                {lang === "zh" ? "书名风格匹配" : "Theme Style Matched"}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                {lang === "zh" 
+                                  ? `智能算法已分析书名，并自动匹配 ${getBookStyleInfo(file.name.replace(/\.txt$/i, "")).chineseTheme} 专属设计风格` 
+                                  : `Analyzed title, matched ${getBookStyleInfo(file.name.replace(/\.txt$/i, "")).chineseTheme} theme design style`}
+                              </p>
+                            </div>
+                          </div>
+                        )}
 
                         {error && status === "idle" && (
                           <div className="mb-6 p-4 bg-red-50/50 rounded-2xl border border-red-100/50 flex gap-3 text-red-800 text-sm text-left">
