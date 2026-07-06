@@ -453,13 +453,31 @@ export default function App() {
   const [showFeedback, setShowFeedback] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [useAICover, setUseAICover] = useState(false);
+  const [coverMode, setCoverMode] = useState<"default" | "ai" | "custom">("ai");
+  const [customCoverBase64, setCustomCoverBase64] = useState<string | null>(null);
+  const [customCoverWithTitle, setCustomCoverWithTitle] = useState(true);
+  const [customCoverPreview, setCustomCoverPreview] = useState<string | null>(null);
+  const customCoverInputRef = useRef<HTMLInputElement>(null);
   const [outputFormat, setOutputFormat] = useState<"epub" | "azw3">("epub");
   const [fontFamily, setFontFamily] = useState<"default" | "serif" | "sans" | "kaiti">("default");
   
   const [feedbackContent, setFeedbackContent] = useState("");
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [feedbackStatus, setFeedbackStatus] = useState<"none" | "success" | "error">("none");
+  const operationAreaRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (coverMode === "custom" && customCoverBase64) {
+      if (customCoverWithTitle && file) {
+        const bookName = file.name.replace(/\.txt$/i, "");
+        generateDefaultCover(bookName, customCoverBase64).then(setCustomCoverPreview);
+      } else {
+        setCustomCoverPreview(customCoverBase64);
+      }
+    } else {
+      setCustomCoverPreview(null);
+    }
+  }, [coverMode, customCoverBase64, customCoverWithTitle, file]);
 
   const processFile = (selectedFile: File) => {
     setError(null);
@@ -477,6 +495,9 @@ export default function App() {
     
     setFile(selectedFile);
     setStatus("idle");
+    setTimeout(() => {
+      operationAreaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -508,6 +529,45 @@ export default function App() {
     }
   };
 
+  const handleCustomCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 600;
+        canvas.height = 800;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        const imgRatio = img.width / img.height;
+        const canvasRatio = canvas.width / canvas.height;
+        let drawWidth, drawHeight, offsetX, offsetY;
+
+        if (imgRatio > canvasRatio) {
+          drawHeight = canvas.height;
+          drawWidth = img.width * (canvas.height / img.height);
+          offsetX = (canvas.width - drawWidth) / 2;
+          offsetY = 0;
+        } else {
+          drawWidth = canvas.width;
+          drawHeight = img.height * (canvas.width / img.width);
+          offsetX = 0;
+          offsetY = (canvas.height - drawHeight) / 2;
+        }
+
+        ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+        setCustomCoverBase64(canvas.toDataURL("image/jpeg", 0.95));
+        setCoverMode("custom");
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleUpload = async () => {
     if (!file) return;
 
@@ -516,7 +576,20 @@ export default function App() {
 
     let generatedCoverBase64: string | null = null;
     
-    if (useAICover) {
+    if (coverMode === "custom" && customCoverBase64) {
+      if (customCoverWithTitle) {
+        setStatus("generating_cover");
+        try {
+          const bookName = file.name.replace(/\.txt$/i, "");
+          generatedCoverBase64 = await generateDefaultCover(bookName, customCoverBase64);
+        } catch (err) {
+          console.error("Failed to generate custom cover with title:", err);
+          generatedCoverBase64 = customCoverBase64;
+        }
+      } else {
+        generatedCoverBase64 = customCoverBase64;
+      }
+    } else if (coverMode === "ai") {
       setStatus("generating_cover");
       try {
         const bookName = file.name.replace(/\.txt$/i, "");
@@ -740,7 +813,7 @@ export default function App() {
     >
       {/* Top Navigation */}
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="w-full max-w-[96vw] 2xl:max-w-[2200px] mx-auto px-6 lg:px-12 h-16 flex items-center justify-between">
           <button 
             onClick={() => setShowAbout(true)} 
             className="flex items-center gap-2 hover:opacity-70 transition-opacity cursor-pointer group"
@@ -750,13 +823,15 @@ export default function App() {
             </div>
             <span className="font-semibold text-lg tracking-tight">KindleTxt</span>
           </button>
-          <nav className="flex items-center gap-6 text-sm font-medium text-slate-500">
-            <button onClick={() => setShowGuide(true)} className="hover:text-slate-900 transition-colors cursor-pointer">{t.guide}</button>
-            <button onClick={() => setShowFAQ(true)} className="hover:text-slate-900 transition-colors cursor-pointer">{t.faq}</button>
-            <button onClick={() => { setShowFeedback(true); setFeedbackStatus("none"); }} className="hover:text-slate-900 transition-colors cursor-pointer">{t.feedback}</button>
+          <nav className="flex items-center gap-3 sm:gap-6 text-sm font-medium text-slate-500">
+            <div className="hidden md:flex portrait:hidden portrait:lg:flex items-center gap-6">
+              <button onClick={() => setShowGuide(true)} className="hover:text-slate-900 transition-colors cursor-pointer">{t.guide}</button>
+              <button onClick={() => setShowFAQ(true)} className="hover:text-slate-900 transition-colors cursor-pointer">{t.faq}</button>
+              <button onClick={() => { setShowFeedback(true); setFeedbackStatus("none"); }} className="hover:text-slate-900 transition-colors cursor-pointer">{t.feedback}</button>
+            </div>
             <button 
               onClick={() => setLang(lang === "zh" ? "en" : "zh")} 
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-all text-slate-700 font-semibold cursor-pointer ml-2"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-all text-slate-700 font-semibold cursor-pointer"
             >
               <span className={lang === "zh" ? "text-slate-900" : "text-slate-400"}>文</span>
               <span className="text-slate-300">/</span>
@@ -889,7 +964,7 @@ export default function App() {
         </div>
       </Modal>
 
-      <main className="max-w-4xl mx-auto px-6 py-12 md:py-20">
+      <main className="w-full max-w-[94vw] 2xl:max-w-[2000px] mx-auto px-6 lg:px-12 py-12 md:py-20">
         <section className="text-center mb-16">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -906,12 +981,12 @@ export default function App() {
         </section>
 
         {/* Converter Card */}
-        <section className="max-w-2xl mx-auto">
+        <section className="w-full max-w-[90vw] 2xl:max-w-[1800px] mx-auto" ref={operationAreaRef}>
           <motion.div 
             layout
             className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden"
           >
-            <div className="p-8 md:p-12">
+            <div className="p-8 md:p-12 xl:p-16">
               <AnimatePresence mode="wait">
                 {status === "idle" && (
                   <motion.div
@@ -919,7 +994,7 @@ export default function App() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="flex flex-col items-center"
+                    className={!file ? "flex flex-col items-center" : "grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 xl:gap-20 items-end"}
                   >
                     {!file ? (
                       <div 
@@ -946,10 +1021,11 @@ export default function App() {
                         />
                       </div>
                     ) : (
-                      <div className="w-full">
-                        <div className={`flex items-center gap-4 p-6 rounded-2xl border mb-6 transition-colors ${
-                          error ? "bg-red-50 border-red-100" : "bg-slate-50 border-slate-100"
-                        }`}>
+                      <>
+                        <div className="w-full flex flex-col gap-6">
+                          <div className={`flex items-center gap-4 p-6 rounded-2xl border transition-colors ${
+                            error ? "bg-red-50 border-red-100" : "bg-slate-50 border-slate-100"
+                          }`}>
                           <div className={`w-12 h-12 rounded-xl shadow-sm flex items-center justify-center transition-colors ${
                             error ? "bg-white text-red-500" : "bg-white text-slate-400"
                           }`}>
@@ -969,7 +1045,7 @@ export default function App() {
                           </button>
                         </div>
 
-                        {!error && file && (
+                        {!error && file && coverMode !== "custom" && (
                           <div className="mb-6 p-4 bg-orange-50/40 rounded-2xl border border-orange-100/50 flex items-center gap-3 text-slate-700 text-sm text-left">
                             <Sparkles size={18} className="text-orange-500 shrink-0" />
                             <div>
@@ -993,14 +1069,25 @@ export default function App() {
                         )}
 
                         {file.size > 4.5 * 1024 * 1024 && !error && status === "idle" && (
-                          <div className="mb-6 p-4 bg-blue-50/50 rounded-2xl border border-blue-100/50 flex gap-3 text-blue-800 text-sm text-left">
+                          <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100/50 flex gap-3 text-blue-800 text-sm text-left">
                             <Info size={18} className="shrink-0 mt-0.5" />
                             <p>{t.batchInfo}</p>
                           </div>
                         )}
+
+                        {coverMode === "custom" && customCoverPreview && (
+                          <div className="flex flex-col items-center bg-slate-50 border border-slate-200 rounded-xl p-6">
+                            <div className="text-sm font-semibold text-slate-700 mb-4 self-start">预览效果 (Cover Preview)</div>
+                            <div className="relative shadow-md overflow-hidden rounded border border-slate-200" style={{ width: "225px", height: "300px" }}>
+                              <img src={customCoverPreview} alt="Cover Preview" className="w-full h-full object-cover" />
+                            </div>
+                          </div>
+                        )}
+                        </div>
                         
-                        <div className="flex flex-col gap-3 mb-6">
-                          <label className="text-sm font-semibold text-slate-700 block text-left">{t.outputFormat}</label>
+                        <div className="w-full flex flex-col gap-6">
+                          <div className="flex flex-col gap-3">
+                            <label className="text-sm font-semibold text-slate-700 block text-left">{t.outputFormat}</label>
                           <div className="flex bg-slate-100 p-1 rounded-xl">
                             <button
                               onClick={() => setOutputFormat("epub")}
@@ -1049,62 +1136,146 @@ export default function App() {
                           </div>
                         </div>
 
-                        <label className="flex items-center justify-center gap-2 mb-6 cursor-pointer group">
-                          <input 
-                            type="checkbox" 
-                            checked={useAICover} 
-                            onChange={(e) => setUseAICover(e.target.checked)}
-                            className="w-4 h-4 text-orange-500 rounded border-slate-300 focus:ring-orange-500"
-                          />
-                          <span className="text-sm font-medium text-slate-600 group-hover:text-slate-900 transition-colors flex items-center gap-1.5">
-                            <ImageIcon size={16} className={useAICover ? "text-orange-500" : "text-slate-400"} />
-                            {t.aiCover}
-                          </span>
-                        </label>
+                        <div className="flex flex-col gap-3 mb-6">
+                          <label className="text-sm font-semibold text-slate-700 block text-left">封面设置 (Cover Mode)</label>
+                          <div className="grid grid-cols-3 gap-2">
+                            <button
+                              onClick={() => setCoverMode("default")}
+                              className={`py-2 px-2 text-xs font-medium rounded-xl border transition-all text-center flex flex-col items-center justify-center gap-1.5 h-20 ${
+                                coverMode === "default"
+                                  ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                                  : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50"
+                              }`}
+                            >
+                              <BookOpen size={20} className={coverMode === "default" ? "text-white" : "text-slate-400"} />
+                              默认纯色
+                            </button>
+                            <button
+                              onClick={() => setCoverMode("ai")}
+                              className={`py-2 px-2 text-xs font-medium rounded-xl border transition-all text-center flex flex-col items-center justify-center gap-1.5 h-20 ${
+                                coverMode === "ai"
+                                  ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                                  : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50"
+                              }`}
+                            >
+                              <Sparkles size={20} className={coverMode === "ai" ? "text-orange-400" : "text-orange-500"} />
+                              AI 智能配图
+                            </button>
+                            <button
+                              onClick={() => {
+                                setCoverMode("custom");
+                                if (!customCoverBase64) {
+                                  customCoverInputRef.current?.click();
+                                }
+                              }}
+                              className={`relative py-2 px-2 text-xs font-medium rounded-xl border transition-all text-center flex flex-col items-center justify-center gap-1.5 overflow-hidden h-20 ${
+                                coverMode === "custom"
+                                  ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                                  : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50"
+                              }`}
+                            >
+                              {coverMode === "custom" && customCoverBase64 ? (
+                                <>
+                                  <img src={customCoverBase64} alt="Custom cover" className="absolute inset-0 w-full h-full object-cover opacity-40 blur-sm" />
+                                  <ImageIcon size={20} className="relative z-10 text-white" />
+                                  <span className="relative z-10">已选择图片</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Upload size={20} className={coverMode === "custom" ? "text-white" : "text-slate-400"} />
+                                  自定义上传
+                                </>
+                              )}
+                              <input 
+                                ref={customCoverInputRef}
+                                type="file" 
+                                accept="image/*" 
+                                className="hidden" 
+                                onChange={handleCustomCoverUpload}
+                              />
+                            </button>
+                          </div>
+                          
+                          {coverMode === "custom" && customCoverBase64 && (
+                            <div className="flex flex-col gap-2 mt-1">
+                              <div className="flex flex-wrap justify-between items-center bg-slate-50 border border-slate-200 rounded-xl p-3">
+                                 <div className="text-xs text-slate-500 font-medium">封面处理方式</div>
+                                 <div className="flex gap-4 items-center">
+                                    <label className="flex items-center gap-1.5 cursor-pointer">
+                                      <input 
+                                        type="radio" 
+                                        checked={customCoverWithTitle} 
+                                        onChange={() => setCustomCoverWithTitle(true)} 
+                                        className="w-3.5 h-3.5 text-slate-900 border-slate-300 focus:ring-slate-900" 
+                                      />
+                                      <span className="text-xs font-medium text-slate-700">系统排版书名</span>
+                                    </label>
+                                    <label className="flex items-center gap-1.5 cursor-pointer">
+                                      <input 
+                                        type="radio" 
+                                        checked={!customCoverWithTitle} 
+                                        onChange={() => setCustomCoverWithTitle(false)} 
+                                        className="w-3.5 h-3.5 text-slate-900 border-slate-300 focus:ring-slate-900" 
+                                      />
+                                      <span className="text-xs font-medium text-slate-700">保留原图纯净</span>
+                                    </label>
+                                    <div className="w-px h-3 bg-slate-300 mx-1"></div>
+                                    <button 
+                                      onClick={(e) => { e.preventDefault(); customCoverInputRef.current?.click(); }} 
+                                      className="text-xs text-orange-500 hover:text-orange-600 font-semibold"
+                                    >
+                                      重传图片
+                                    </button>
+                                 </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
 
                         <button 
                           onClick={handleUpload}
-                          disabled={!!error}
-                          className={`relative overflow-hidden w-full py-4 rounded-xl font-semibold flex items-center justify-center gap-2 group shadow-lg transition-all ${
-                            error 
-                              ? "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none" 
-                              : "bg-slate-900 text-white hover:bg-slate-800 shadow-slate-200"
-                          }`}
-                        >
-                          {!error && (
-                            <div className="absolute inset-0 pointer-events-none">
-                              {BTN_PARTICLES.map((p) => (
-                                <motion.div
-                                  key={p.id}
-                                  className="absolute rounded-full bg-white/30"
-                                  style={{
-                                    width: p.size,
-                                    height: p.size,
-                                    left: `${p.left}%`,
-                                    top: `${p.top}%`,
-                                  }}
-                                  animate={{
-                                    opacity: [0, 0.8, 0],
-                                    scale: [0.5, 1.5, 0.5],
-                                    y: [0, p.yOffset],
-                                    x: [0, p.xOffset]
-                                  }}
-                                  transition={{
-                                    duration: 6,
-                                    repeat: Infinity,
-                                    ease: "easeInOut",
-                                    delay: p.delay,
-                                  }}
-                                />
-                              ))}
-                            </div>
-                          )}
-                          <span className="relative z-10">
-                            {error ? t.btnError : (status === "idle" ? (file.size > 4.5 * 1024 * 1024 ? t.btnStartBatch : t.btnStart) : t.btnConverting)}
-                          </span>
-                          {!error && <Download size={18} className="relative z-10 group-hover:translate-y-0.5 transition-transform" />}
-                        </button>
-                      </div>
+                            disabled={!!error}
+                            className={`relative overflow-hidden w-full py-4 rounded-xl font-semibold flex items-center justify-center gap-2 group shadow-lg transition-all ${
+                              error 
+                                ? "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none" 
+                                : "bg-slate-900 text-white hover:bg-slate-800 shadow-slate-200"
+                            }`}
+                          >
+                            {!error && (
+                              <div className="absolute inset-0 pointer-events-none">
+                                {BTN_PARTICLES.map((p) => (
+                                  <motion.div
+                                    key={p.id}
+                                    className="absolute rounded-full bg-white/30"
+                                    style={{
+                                      width: p.size,
+                                      height: p.size,
+                                      left: `${p.left}%`,
+                                      top: `${p.top}%`,
+                                    }}
+                                    animate={{
+                                      opacity: [0, 0.8, 0],
+                                      scale: [0.5, 1.5, 0.5],
+                                      y: [0, p.yOffset],
+                                      x: [0, p.xOffset]
+                                    }}
+                                    transition={{
+                                      duration: 6,
+                                      repeat: Infinity,
+                                      ease: "easeInOut",
+                                      delay: p.delay,
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            )}
+                            <span className="relative z-10">
+                              {error ? t.btnError : (status === "idle" ? (file.size > 4.5 * 1024 * 1024 ? t.btnStartBatch : t.btnStart) : t.btnConverting)}
+                            </span>
+                            {!error && <Download size={18} className="relative z-10 group-hover:translate-y-0.5 transition-transform" />}
+                          </button>
+                        </div>
+                      </>
                     )}
                   </motion.div>
                 )}
@@ -1235,7 +1406,7 @@ export default function App() {
         </section>
       </main>
 
-      <footer className="max-w-4xl mx-auto px-6 py-12 border-t border-slate-200 mt-20 text-center">
+      <footer className="w-full max-w-[94vw] 2xl:max-w-[2000px] mx-auto px-6 lg:px-12 py-12 border-t border-slate-200 mt-20 text-center">
         <p className="text-sm text-slate-400">
           {t.footer}
         </p>
