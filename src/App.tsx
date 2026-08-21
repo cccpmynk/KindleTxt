@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import JSZip from "jszip";
 import jschardet from "jschardet";
-import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, BookOpen, Smartphone, Sparkles, Image as ImageIcon, Info, X, ShieldCheck } from "lucide-react";
+import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, BookOpen, Smartphone, Sparkles, Image as ImageIcon, Info, X, ShieldCheck, Users, Eye, BookMarked } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { buildLocalEpub, extractChapters, decodeBufferToText } from "./epubBuilder";
 
@@ -105,6 +105,10 @@ const translations = {
     encodingUtf8: "UTF-8 (国际标准)",
     encodingGb: "GBK / GB18030 (简体中文)",
     encodingBig5: "Big5 (繁体中文)",
+    statsTotalViews: "总浏览量",
+    statsUniqueVisitors: "独立访客",
+    statsTotalConversions: "已转换书籍",
+    statsLiveBadge: "实时统计",
   },
   en: {
     guide: "Guide",
@@ -188,6 +192,10 @@ const translations = {
     encodingUtf8: "UTF-8 (Standard)",
     encodingGb: "GBK / GB18030 (Simplified)",
     encodingBig5: "Big5 (Traditional)",
+    statsTotalViews: "Page Views",
+    statsUniqueVisitors: "Unique Visitors",
+    statsTotalConversions: "Books Converted",
+    statsLiveBadge: "Live Stats",
   }
 };
 
@@ -474,6 +482,52 @@ export default function App() {
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [feedbackStatus, setFeedbackStatus] = useState<"none" | "success" | "error">("none");
   const operationAreaRef = useRef<HTMLElement>(null);
+  
+  const [stats, setStats] = useState<{
+    pageViews: number;
+    uniqueVisitors: number;
+    totalConversions: number;
+  }>({
+    pageViews: 0,
+    uniqueVisitors: 0,
+    totalConversions: 0,
+  });
+
+  // Track page view and visitor stats
+  useEffect(() => {
+    let vid = "";
+    try {
+      vid = localStorage.getItem("ereadertxt_vid") || "";
+      if (!vid) {
+        vid = "v_" + Math.random().toString(36).substring(2) + Date.now().toString(36);
+        localStorage.setItem("ereadertxt_vid", vid);
+      }
+    } catch (e) {
+      vid = "v_" + Math.random().toString(36).substring(2);
+    }
+
+    fetch("/api/stats/visit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visitorId: vid }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && typeof data.pageViews === "number") {
+          setStats({
+            pageViews: data.pageViews,
+            uniqueVisitors: data.uniqueVisitors,
+            totalConversions: data.totalConversions,
+          });
+        }
+      })
+      .catch((err) => console.warn("Failed to record visit:", err));
+  }, []);
+
+  const trackConversionSuccess = () => {
+    setStats((prev) => ({ ...prev, totalConversions: prev.totalConversions + 1 }));
+    fetch("/api/stats/conversion", { method: "POST" }).catch(() => {});
+  };
 
   useEffect(() => {
     if (coverMode === "custom" && customCoverBase64) {
@@ -670,7 +724,7 @@ export default function App() {
           const partChapters = extractChapters(chunks[i]);
           const epubBlob = await buildLocalEpub({
             title: partTitle,
-            author: "KindleTxt",
+            author: "eReaderTxt",
             chapters: partChapters,
             coverBase64: generatedCoverBase64,
             fontFamily,
@@ -683,6 +737,7 @@ export default function App() {
         const url = window.URL.createObjectURL(zipBlob);
         setDownloadUrl(url);
         setStatus("success");
+        trackConversionSuccess();
         setBatchProgress({ current: 0, total: 0 });
         return;
       }
@@ -692,7 +747,7 @@ export default function App() {
       const chapters = extractChapters(decodedText);
       const epubBlob = await buildLocalEpub({
         title: bookTitle,
-        author: "KindleTxt",
+        author: "eReaderTxt",
         chapters,
         coverBase64: generatedCoverBase64,
         fontFamily,
@@ -701,6 +756,7 @@ export default function App() {
       const url = window.URL.createObjectURL(epubBlob);
       setDownloadUrl(url);
       setStatus("success");
+      trackConversionSuccess();
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : (lang === "zh" ? "本地转换过程中发生故障" : "An error occurred during local conversion"));
@@ -757,15 +813,26 @@ export default function App() {
       {/* Top Navigation */}
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur-md sticky top-0 z-50">
         <div className="w-full max-w-[96vw] 2xl:max-w-[2200px] mx-auto px-6 lg:px-12 h-16 flex items-center justify-between">
-          <button 
-            onClick={() => setShowAbout(true)} 
-            className="flex items-center gap-2 hover:opacity-70 transition-opacity cursor-pointer group"
-          >
-            <div className="bg-slate-900 text-white p-1.5 rounded-lg group-hover:scale-110 transition-transform">
-              <BookOpen size={20} />
-            </div>
-            <span className="font-semibold text-lg tracking-tight">eReaderTxt</span>
-          </button>
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setShowAbout(true)} 
+              className="flex items-center gap-2 hover:opacity-70 transition-opacity cursor-pointer group"
+            >
+              <div className="bg-slate-900 text-white p-1.5 rounded-lg group-hover:scale-110 transition-transform">
+                <BookOpen size={20} />
+              </div>
+              <span className="font-semibold text-lg tracking-tight">eReaderTxt</span>
+            </button>
+
+            {/* Subtle Visitor Indicator in Header */}
+            {stats.uniqueVisitors > 0 && (
+              <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100/90 text-slate-500 text-xs font-medium border border-slate-200/60" title={`${t.statsUniqueVisitors}: ${stats.uniqueVisitors}`}>
+                <Users size={12} className="text-slate-400" />
+                <span className="tabular-nums font-semibold text-slate-700">{stats.uniqueVisitors.toLocaleString()}</span>
+              </div>
+            )}
+          </div>
+
           <nav className="flex items-center gap-3 sm:gap-6 text-sm font-medium text-slate-500">
             <div className="hidden md:flex portrait:hidden portrait:lg:flex items-center gap-6">
               <button onClick={() => setShowGuide(true)} className="hover:text-slate-900 transition-colors cursor-pointer">{t.guide}</button>
@@ -1363,8 +1430,52 @@ export default function App() {
         </section>
       </main>
 
-      <footer className="w-full max-w-[94vw] 2xl:max-w-[2000px] mx-auto px-6 lg:px-12 py-12 border-t border-slate-200 mt-20 text-center">
-        <p className="text-sm text-slate-400">
+      <footer className="w-full max-w-[94vw] 2xl:max-w-[2000px] mx-auto px-6 lg:px-12 py-12 border-t border-slate-200 mt-20 flex flex-col items-center gap-6">
+        {/* Visitor & Usage Stats Counter */}
+        <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-xs text-slate-600 bg-white/80 backdrop-blur border border-slate-200/90 shadow-xs px-5 py-2.5 rounded-2xl">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="font-semibold text-slate-700">{t.statsLiveBadge}</span>
+          </div>
+
+          <span className="text-slate-200 hidden sm:inline">|</span>
+
+          <div className="flex items-center gap-1.5" title={t.statsTotalViews}>
+            <Eye size={14} className="text-slate-400" />
+            <span>{t.statsTotalViews}:</span>
+            <span className="font-bold text-slate-800 tabular-nums">
+              {stats.pageViews > 0 ? stats.pageViews.toLocaleString() : "..."}
+            </span>
+          </div>
+
+          <span className="text-slate-200 hidden sm:inline">|</span>
+
+          <div className="flex items-center gap-1.5" title={t.statsUniqueVisitors}>
+            <Users size={14} className="text-slate-400" />
+            <span>{t.statsUniqueVisitors}:</span>
+            <span className="font-bold text-slate-800 tabular-nums">
+              {stats.uniqueVisitors > 0 ? stats.uniqueVisitors.toLocaleString() : "..."}
+            </span>
+          </div>
+
+          {stats.totalConversions > 0 && (
+            <>
+              <span className="text-slate-200 hidden sm:inline">|</span>
+              <div className="flex items-center gap-1.5" title={t.statsTotalConversions}>
+                <BookMarked size={14} className="text-amber-500" />
+                <span>{t.statsTotalConversions}:</span>
+                <span className="font-bold text-amber-600 tabular-nums">
+                  {stats.totalConversions.toLocaleString()}
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+
+        <p className="text-sm text-slate-400 text-center max-w-2xl">
           {t.footer}
         </p>
       </footer>

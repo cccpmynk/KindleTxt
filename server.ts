@@ -28,7 +28,30 @@ async function initDb() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    console.log("Database initialized (feedback table ready)");
+    
+    await turso.execute(`
+      CREATE TABLE IF NOT EXISTS site_stats (
+        key TEXT PRIMARY KEY,
+        value INTEGER DEFAULT 0
+      )
+    `);
+
+    await turso.execute(`
+      CREATE TABLE IF NOT EXISTS daily_visitors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        visitor_id TEXT NOT NULL,
+        visit_date TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(visitor_id, visit_date)
+      )
+    `);
+
+    await turso.execute({
+      sql: `INSERT OR IGNORE INTO site_stats (key, value) VALUES ('page_views', 0), ('conversions', 0)`,
+      args: []
+    });
+
+    console.log("Database initialized (feedback & visitor stats ready)");
   } catch (err) {
     console.error("Database initialization failed:", err);
   }
@@ -240,6 +263,88 @@ async function startServer() {
     } catch (error) {
       console.error("Feedback submission error:", error);
       res.status(500).json({ error: "提交留言失败，请稍后重试" });
+    }
+  });
+
+  // API Route: Track Page Visit & Visitor
+  app.post("/api/stats/visit", async (req, res) => {
+    try {
+      const { visitorId } = req.body || {};
+      const today = new Date().toISOString().slice(0, 10);
+
+      // Increment total page views
+      await turso.execute(`
+        UPDATE site_stats 
+        SET value = value + 1 
+        WHERE key = 'page_views'
+      `);
+
+      // Record daily unique visitor if visitorId provided
+      if (visitorId && typeof visitorId === "string") {
+        try {
+          await turso.execute({
+            sql: "INSERT OR IGNORE INTO daily_visitors (visitor_id, visit_date) VALUES (?, ?)",
+            args: [visitorId.slice(0, 64), today]
+          });
+        } catch (e) {
+          // ignore unique constraint
+        }
+      }
+
+      // Query latest stats
+      const pvResult = await turso.execute("SELECT value FROM site_stats WHERE key = 'page_views'");
+      const uvResult = await turso.execute("SELECT COUNT(DISTINCT visitor_id) as total_uv FROM daily_visitors");
+      const convResult = await turso.execute("SELECT value FROM site_stats WHERE key = 'conversions'");
+
+      const pageViews = (pvResult.rows[0]?.value as number) || 1;
+      const uniqueVisitors = Math.max((uvResult.rows[0]?.total_uv as number) || 1, 1);
+      const totalConversions = (convResult.rows[0]?.value as number) || 0;
+
+      res.json({
+        pageViews,
+        uniqueVisitors,
+        totalConversions
+      });
+    } catch (error) {
+      console.error("Visit tracking error:", error);
+      res.json({ pageViews: 1, uniqueVisitors: 1, totalConversions: 0 });
+    }
+  });
+
+  // API Route: Get Stats
+  app.get("/api/stats", async (req, res) => {
+    try {
+      const pvResult = await turso.execute("SELECT value FROM site_stats WHERE key = 'page_views'");
+      const uvResult = await turso.execute("SELECT COUNT(DISTINCT visitor_id) as total_uv FROM daily_visitors");
+      const convResult = await turso.execute("SELECT value FROM site_stats WHERE key = 'conversions'");
+
+      const pageViews = (pvResult.rows[0]?.value as number) || 0;
+      const uniqueVisitors = (uvResult.rows[0]?.total_uv as number) || 0;
+      const totalConversions = (convResult.rows[0]?.value as number) || 0;
+
+      res.json({
+        pageViews,
+        uniqueVisitors,
+        totalConversions
+      });
+    } catch (error) {
+      console.error("Get stats error:", error);
+      res.json({ pageViews: 0, uniqueVisitors: 0, totalConversions: 0 });
+    }
+  });
+
+  // API Route: Track Successful Conversion
+  app.post("/api/stats/conversion", async (req, res) => {
+    try {
+      await turso.execute(`
+        UPDATE site_stats 
+        SET value = value + 1 
+        WHERE key = 'conversions'
+      `);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Conversion stats error:", error);
+      res.json({ success: false });
     }
   });
 
