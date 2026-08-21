@@ -1,7 +1,7 @@
 {
-  "name": "KindleTxt - 电子书转换器",
-  "short_name": "KindleTxt",
-  "description": "一个极简、高效的工具，将您的 TXT 文档完美转换为 Kindle 支持的电子书格式。",
+  "name": "eReaderTxt - 电子书转换器",
+  "short_name": "eReaderTxt",
+  "description": "一个极简、高效的工具，将您的 TXT 文档完美转换为 eReader 支持的电子书格式。",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#FDFCFB",

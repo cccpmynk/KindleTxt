@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from "react";
 import JSZip from "jszip";
 import jschardet from "jschardet";
-import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, BookOpen, Smartphone, Sparkles, Image as ImageIcon, Info, X } from "lucide-react";
+import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, BookOpen, Smartphone, Sparkles, Image as ImageIcon, Info, X, ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { buildLocalEpub, extractChapters, decodeBufferToText } from "./epubBuilder";
 
 /**
- * KindleTxt - Kindle Ebook Converter
- * A minimal, elegant tool to convert TXT files to Kindle-compatible EPUB format.
+ * eReaderTxt - eReader Ebook Converter
+ * A minimal, elegant tool to convert TXT files to eReader-compatible EPUB format.
  */
 
 type ConversionStatus = "idle" | "uploading" | "generating_cover" | "converting" | "success" | "error";
@@ -33,28 +34,27 @@ const translations = {
     guideStep1: "准备好您的 TXT 文档。建议确保文件编码为 UTF-8，以避免转换后出现乱码。",
     guideStep2: "在首页点击上传区域，或者直接将文件拖拽进来。",
     guideStep3: "点击“开始转换”。我们会自动为您识别章节（如：第一章、Chapter 1等）并生成电子书目录。",
-    guideStep4: "下载生成的 EPUB 文件。您可以通过电缆复制到 Kindle，或使用亚马逊官方的 Send to Kindle 服务发送。",
-    guideStep5: "重要：若要在 Kindle 上看到您选定的字体，请在 Kindle 阅读页面点击「Aa」-「字体」，选择「出版者字体」(Publisher Font)。",
+    guideStep4: "下载生成的 EPUB 文件。您可以通过 USB 数据线复制到 eReader，或使用官方无线传输/邮箱服务发送。",
+    guideStep5: "重要：若要在 eReader 上看到您选定的字体，请在阅读页面点击「Aa」-「字体」，选择「出版者字体」(Publisher Font)。",
     faqTitle: "❓ 常见问题",
-    faqQ1: "为什么转换后是 EPUB 而不是 AZW3？",
-    faqA1: "亚马逊官方自2022年起已经全面支持 EPUB 格式，并且现在的 Kindle 已经停止支持通过邮件发送 MOBI。EPUB 具有更好的兼容性和排版效果，是目前最推荐的格式。",
-    faqQ2: "Send to Kindle 如何使用？",
-    faqA2: "转换完成后下载 EPUB 文件，您可以通过浏览器访问亚马逊官方的 Send to Kindle 网页端，把文件拖入即可无线推送到您的 Kindle。您也可以将文件作为附件发邮件至您的专属 Kindle 邮箱。",
+    faqQ1: "为什么转换后是 EPUB 格式？",
+    faqA1: "主流 eReader 电纸书及阅读应用全面支持标准 EPUB 格式。EPUB 具有极佳的跨设备兼容性与排版效果，是目前最推荐的格式。",
+    faqQ2: "如何传输到 eReader 设备？",
+    faqA2: "转换完成后下载 EPUB 文件，您可以通过 USB 数据线拷贝到 eReader，也可以使用设备专属的无线传输或邮箱推送服务发送至您的设备。",
     faqQ3: "发现文件转换后有乱码怎么办？",
     faqA3: "这是由于 TXT 文件编码不是 UTF-8 导致的。请尝试在电脑上用记事本打开 TXT，选择“另存为”，在编码处选择 UTF-8，然后重新上传转换。",
     faqQ4: "我的隐私安全吗？",
-    faqA4: "绝对安全。本工具在服务器内存中完成转换，所有数据在转换完成后立即从内存中销毁，我们不会在任何地方存储您的书稿。",
+    faqA4: "绝对安全。所有转换排版均在您的浏览器本地完成（纯前端本地运算），您的书稿文本绝不会上传到任何服务器，100% 保护您的隐私与版权。",
     faqQ5: "章节识别不准确是怎么回事？",
     faqA5: "我们通过正则匹配常见的章节标识。如果您的文档章节格式非常特殊，可能无法识别。建议确保章节名单独占一行。",
-    faqQ6: "为什么在 Kindle 手机版里无法调整字体粗细？",
-    faqA6: "当您在转换时选择了特定的排版字体（如苹方、宋体），Kindle 会以“出版者字体”模式运行，由于系统兼容性限制，此时往往会禁用其原生的粗细调整功能。如果您想拥有完整的加粗控制自由，请在转换时选择“系统默认”，这样在阅读时就可以自由切换 Kindle 内置字体并调整粗细。",
+    faqQ6: "为什么在部分 eReader 软件里无法调整字体粗细？",
+    faqA6: "当您在转换时选择了特定的排版字体（如苹方、宋体），eReader 会以“出版者字体”模式运行，由于系统兼容性限制，此时往往会禁用其原生的粗细调整功能。如果您想拥有完整的加粗控制自由，请在转换时选择“系统默认”，这样在阅读时就可以自由切换 eReader 内置字体并调整粗细。",
     mainTitle: "让阅读回归纯粹",
-    mainSub: "将您的本地 TXT 文档轻松转换为 Kindle 支持的最佳格式 (EPUB)，自动章节识别，极致排版体验。",
+    mainSub: "将您的本地 TXT 文档轻松转换为 eReader 支持的最佳格式 (EPUB)，自动章节识别，极致排版体验。",
     dropZone: "点击或拖拽 TXT 文件到此处",
     dropZoneSub: "支持最大 50MB 的 TXT 纯文本文件（超大文件将自动分卷）",
     remove: "移除",
-    batchInfo: "该文件较大，系统将自动将其平均拆分为多个较小的分卷（约 3.5MB 每卷）进行转换，并最终打包为一个 ZIP 文件供您下载。",
-    outputFormat: "选择输出格式：",
+    batchInfo: "该文件较大，系统将自动将其平均拆分为多个较小的分卷（约 3.5MB 每卷）在本地进行转换，并打包为一个 ZIP 文件供您下载。",
     aiCover: "使用 AI 自动生成专属封面",
     btnStart: "开始转换",
     btnStartBatch: "开始批量转换",
@@ -71,16 +71,16 @@ const translations = {
     downloadZip: "立即下载 ZIP",
     downloadLabel: "立即下载",
     convertAnother: "转换另一个文件",
-    kindleTipPrefix: "Kindle 提示：使用官方的 ",
-    kindleTipLink: "Send to Kindle",
-    kindleTipSuffix: " 网页端，或发送邮件到设备专属邮箱即可推送至设备，效果极佳。点击上方链接可直接跳转。",
+    kindleTipPrefix: "eReader 提示：您可以通过 USB 数据线或无线互传将生成的 EPUB 传输至您的设备，效果极佳。",
+    kindleTipLink: "",
+    kindleTipSuffix: "",
     errorTitle: "出错了",
     btnRetry: "返回重试",
     feature1Title: "多设备适配",
-    feature1Sub: "生成的 EPUB 完美适配 Kindle、掌阅 iReader 以及各品牌电纸书。",
+    feature1Sub: "生成的 EPUB 完美适配各类 eReader、墨水屏阅读器及电纸书设备。",
     feature2Title: "自动章节识别",
     feature2Sub: "智能算法自动识别文档中的章节标识，并生成目录索引。",
-    footer: "© 2026 KindleTxt. 隐私声明：所有转换在服务器内存中处理，转换后立即销毁，保护您的版权与隐私。",
+    footer: "© 2026 eReaderTxt. 隐私声明：所有转换与排版均在浏览器本地完成，文件绝不上传服务器，全面保护您的隐私与版权。",
     onlyTxt: "目前仅支持 TXT 格式文件。",
     fileTooLarge: "文件过大，为了保证您的设备运行稳定，暂不支持超过 50MB 的文件。",
     serverError: "文件太大，超出了服务器处理上限 (4.5MB)",
@@ -100,6 +100,11 @@ const translations = {
     fontSerif: "宋体 (衬线体)",
     fontSans: "苹方 (无衬线体)",
     fontKaiti: "楷体 (手写感)",
+    selectEncoding: "文件编码：",
+    encodingAuto: "自动识别 (推荐)",
+    encodingUtf8: "UTF-8 (国际标准)",
+    encodingGb: "GBK / GB18030 (简体中文)",
+    encodingBig5: "Big5 (繁体中文)",
   },
   en: {
     guide: "Guide",
@@ -120,28 +125,27 @@ const translations = {
     guideStep1: "Prepare your TXT document. Ensure the encoding is UTF-8 to avoid garbled characters after conversion.",
     guideStep2: "Click the upload area on the home page or directly drag and drop the file.",
     guideStep3: "Click 'Start Conversion'. We will automatically recognize chapters (e.g., Chapter 1, Section 1) and generate a Table of Contents.",
-    guideStep4: "Download the generated EPUB file. You can copy it to Kindle via cable or use Amazon's official 'Send to Kindle' service.",
-    guideStep5: "Important: To see your selected font on Kindle, tap 'Aa' - 'Font' and select 'Publisher Font' while reading.",
+    guideStep4: "Download the generated EPUB file. You can copy it to eReader via cable or use wireless transfer services.",
+    guideStep5: "Important: To see your selected font on eReader, tap 'Aa' - 'Font' and select 'Publisher Font' while reading.",
     faqTitle: "❓ Frequently Asked Questions",
-    faqQ1: "Why EPUB instead of AZW3?",
-    faqA1: "Amazon has fully supported the EPUB format since 2022, and modern Kindles no longer support sending MOBI via email. EPUB offers better compatibility and layout quality.",
-    faqQ2: "How to use Send to Kindle?",
-    faqA2: "After conversion, download the EPUB file. You can visit the official Send to Kindle web interface and drag the file in to push it wirelessly. You can also send the file as an email attachment to your Kindle email address.",
+    faqQ1: "Why EPUB format?",
+    faqA1: "Modern eReaders and apps natively support the EPUB format. EPUB offers better compatibility, typography, and layout quality.",
+    faqQ2: "How to transfer files to eReader?",
+    faqA2: "After conversion, download the EPUB file. You can transfer the file to your eReader via USB cable, email push, or wireless sync services.",
     faqQ3: "What if the converted file has garbled characters?",
     faqA3: "This is usually due to the TXT file not being UTF-8 encoded. Try opening it with Notepad, choosing 'Save As', selecting UTF-8 encoding, and re-uploading.",
     faqQ4: "Is my privacy secure?",
-    faqA4: "Absolutely. All conversions are performed in the server's memory and destroyed immediately after. We do not store your manuscripts anywhere.",
+    faqA4: "Absolutely. All conversions and typesetting are performed locally in your browser. Your files are never uploaded to any server, 100% protecting your privacy and copyright.",
     faqQ5: "Why is chapter recognition inaccurate?",
     faqA5: "We use regex to match common chapter patterns. If your document has unusual formatting, it might not be recognized. Ensure chapter titles are on their own lines.",
-    faqQ6: "Why can't I adjust font weight in the Kindle app?",
-    faqA6: "When you select a specific font (like PingFang or Songti), Kindle operates in 'Publisher Font' mode. Due to system compatibility, this often disables the app's native thickness adjustment. For full control over boldness, please choose 'System Default' during conversion to use Kindle's built-in fonts.",
+    faqQ6: "Why can't I adjust font weight in the eReader app?",
+    faqA6: "When you select a specific font (like PingFang or Songti), eReader operates in 'Publisher Font' mode. Due to system compatibility, this often disables native thickness adjustment. For full control over boldness, please choose 'System Default' during conversion to use built-in fonts.",
     mainTitle: "Pure Reading Experience",
-    mainSub: "Effortlessly convert your local TXT documents to the best format for Kindle (EPUB), with smart chapter recognition and clean layout.",
+    mainSub: "Effortlessly convert your local TXT documents to the best format for eReader (EPUB), with smart chapter recognition and clean layout.",
     dropZone: "Click or drag TXT file here",
     dropZoneSub: "Supports TXT files up to 50MB (large files will be automatically split)",
     remove: "Remove",
-    batchInfo: "This file is large. The system will automatically split it into smaller parts (~3.5MB each) and package them into a ZIP file for you.",
-    outputFormat: "Output Format:",
+    batchInfo: "This file is large. The system will automatically split it into smaller parts (~3.5MB each) locally and package them into a ZIP file for you.",
     aiCover: "Generate exclusive AI cover",
     btnStart: "Start Conversion",
     btnStartBatch: "Start Batch Conversion",
@@ -158,16 +162,16 @@ const translations = {
     downloadZip: "Download ZIP",
     downloadLabel: "Download",
     convertAnother: "Convert another file",
-    kindleTipPrefix: "Kindle Tip: Use the official ",
-    kindleTipLink: "Send to Kindle",
-    kindleTipSuffix: " web interface or email to push files wirelessly for the best experience. Click the link above to visit.",
+    kindleTipPrefix: "eReader Tip: Transfer the generated EPUB file to your eReader via USB or wireless sync for the best reading experience.",
+    kindleTipLink: "",
+    kindleTipSuffix: "",
     errorTitle: "Something went wrong",
     btnRetry: "Back & Retry",
     feature1Title: "Multi-device Support",
-    feature1Sub: "Generated EPUB files work perfectly on Kindle, iReader, and other E-ink devices.",
+    feature1Sub: "Generated EPUB files work perfectly on all eReader and E-ink devices.",
     feature2Title: "Smart Chapters",
     feature2Sub: "Intelligent algorithm automatically identifies chapter markers and generates a TOC.",
-    footer: "© 2026 KindleTxt. Privacy: All processing happens in-memory and is wiped instantly. Your data stays private.",
+    footer: "© 2026 eReaderTxt. Privacy: All conversion and formatting happen locally in your browser. No files are uploaded to any server.",
     onlyTxt: "Currently only supports TXT files.",
     fileTooLarge: "File too large. To ensure stability, files over 50MB are not supported.",
     serverError: "File too large for server processing (4.5MB limit)",
@@ -179,6 +183,11 @@ const translations = {
     fontSerif: "Serif (Songti)",
     fontSans: "Sans-serif (PingFang)",
     fontKaiti: "Kaiti (Handwriting)",
+    selectEncoding: "File Encoding:",
+    encodingAuto: "Auto-detect (Best)",
+    encodingUtf8: "UTF-8 (Standard)",
+    encodingGb: "GBK / GB18030 (Simplified)",
+    encodingBig5: "Big5 (Traditional)",
   }
 };
 
@@ -361,7 +370,7 @@ function generateDefaultCover(bookTitle: string, backgroundImageSrc?: string): P
       ctx.font = '500 16px "PingFang SC", "Noto Sans SC", sans-serif';
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("K I N D L E T X T   E B O O K", 300, 100);
+      ctx.fillText("E R E A D E R T X T   E B O O K", 300, 100);
 
       // Draw Title text
       ctx.fillStyle = "#ffffff";
@@ -453,13 +462,13 @@ export default function App() {
   const [showFeedback, setShowFeedback] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [coverMode, setCoverMode] = useState<"default" | "ai" | "custom">("ai");
+  const [coverMode, setCoverMode] = useState<"default" | "ai" | "custom">("default");
   const [customCoverBase64, setCustomCoverBase64] = useState<string | null>(null);
   const [customCoverWithTitle, setCustomCoverWithTitle] = useState(true);
   const [customCoverPreview, setCustomCoverPreview] = useState<string | null>(null);
   const customCoverInputRef = useRef<HTMLInputElement>(null);
-  const [outputFormat, setOutputFormat] = useState<"epub" | "azw3">("epub");
   const [fontFamily, setFontFamily] = useState<"default" | "serif" | "sans" | "kaiti">("default");
+  const [encoding, setEncoding] = useState<"auto" | "utf-8" | "gb18030" | "big5">("auto");
   
   const [feedbackContent, setFeedbackContent] = useState("");
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
@@ -614,49 +623,21 @@ export default function App() {
       }
     }
 
-    if (file.size > 4.5 * 1024 * 1024) {
-      setStatus("converting");
-      setBatchProgress({ current: 0, total: -1 });
-      
-      // Delay to allow UI animations to finish before synchronous blocking operations
-      await new Promise(resolve => setTimeout(resolve, 500));
+    // Pure client-side local EPUB conversion
+    setStatus("converting");
 
-      try {
-        const buffer = await file.arrayBuffer();
-        const uint8Array = new Uint8Array(buffer);
-        
-        let detectedEncoding = "utf-8";
-        try {
-          const sampleSize = Math.min(uint8Array.length, 500000);
-          const sample = uint8Array.slice(0, sampleSize);
-          let str = "";
-          for (let i = 0; i < sample.length; i += 4096) {
-            str += String.fromCharCode.apply(null, Array.from(sample.slice(i, i + 4096)));
-          }
-          const detected = jschardet.detect(str);
-          if (detected && detected.encoding) {
-            detectedEncoding = detected.encoding.toLowerCase();
-          }
-        } catch (e) {
-          console.warn("jschardet detection failed", e);
-        }
+    try {
+      const buffer = await file.arrayBuffer();
+      const uint8Array = new Uint8Array(buffer);
+      const decodedText = decodeBufferToText(uint8Array, jschardet, encoding);
+      const bookTitle = file.name.replace(/\.txt$/i, "");
 
-        if (detectedEncoding === "ascii" || detectedEncoding.includes("windows-1252") || detectedEncoding.includes("windows-1251")) detectedEncoding = "utf-8";
-        if (detectedEncoding.includes("gb")) detectedEncoding = "gb18030";
-        if (detectedEncoding === "big5") detectedEncoding = "big5";
-        
-        let text = "";
-        try {
-          const decoder = new TextDecoder(detectedEncoding);
-          text = decoder.decode(uint8Array);
-        } catch (e) {
-          console.warn("TextDecoder failed, using utf-8 fallback");
-          const decoder = new TextDecoder("utf-8");
-          text = decoder.decode(uint8Array);
-        }
+      if (file.size > 4.5 * 1024 * 1024) {
+        setBatchProgress({ current: 0, total: -1 });
+        await new Promise(resolve => setTimeout(resolve, 300));
 
-        const lines = text.split('\n');
-        const chunks = [];
+        const lines = decodedText.split('\n');
+        const chunks: string[] = [];
         let currentChunk: string[] = [];
         let currentSize = 0;
         const TARGET_SIZE = 3.5 * 1024 * 1024; // 3.5MB
@@ -667,42 +648,35 @@ export default function App() {
             await new Promise(r => setTimeout(r, 0));
           }
           const line = lines[i];
-          const lineSize = textEncoder.encode(line).length + 1; // +1 for '\n'
+          const lineSize = textEncoder.encode(line).length + 1;
           if (currentSize + lineSize > TARGET_SIZE && currentChunk.length > 0) {
-            chunks.push(new Blob(currentChunk, { type: "text/plain" }));
+            chunks.push(currentChunk.join('\n'));
             currentChunk = [];
             currentSize = 0;
           }
-          currentChunk.push(line + '\n');
+          currentChunk.push(line);
           currentSize += lineSize;
         }
         if (currentChunk.length > 0) {
-          chunks.push(new Blob(currentChunk, { type: "text/plain" }));
+          chunks.push(currentChunk.join('\n'));
         }
 
         const zip = new JSZip();
         for (let i = 0; i < chunks.length; i++) {
           setBatchProgress({ current: i + 1, total: chunks.length });
-          const formData = new FormData();
-          const chunkFile = new File([chunks[i]], `${file.name.replace(/\.txt$/i, "")}_part${i + 1}.txt`, { type: "text/plain" });
-          formData.append("file", chunkFile);
-          formData.append("format", outputFormat);
-          formData.append("fontFamily", fontFamily);
-          if (generatedCoverBase64) {
-            formData.append("coverImage", generatedCoverBase64);
-          }
+          await new Promise(r => setTimeout(r, 20));
 
-          const response = await fetch("/api/convert", {
-            method: "POST",
-            body: formData,
+          const partTitle = `${bookTitle} (Part ${i + 1})`;
+          const partChapters = extractChapters(chunks[i]);
+          const epubBlob = await buildLocalEpub({
+            title: partTitle,
+            author: "KindleTxt",
+            chapters: partChapters,
+            coverBase64: generatedCoverBase64,
+            fontFamily,
           });
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`${lang === "zh" ? "第" : "Part"} ${i + 1} ${t.partFailed}`);
-          }
-          const blob = await response.blob();
-          zip.file(`${file.name.replace(/\.txt$/i, "")}_part${i + 1}.${outputFormat}`, blob);
+          zip.file(`${bookTitle}_part${i + 1}.epub`, epubBlob);
         }
 
         const zipBlob = await zip.generateAsync({ type: "blob" });
@@ -711,58 +685,27 @@ export default function App() {
         setStatus("success");
         setBatchProgress({ current: 0, total: 0 });
         return;
-      } catch (err) {
-        console.error(err);
-        setError(err instanceof Error ? err.message : t.batchError);
-        setStatus("error");
-        setBatchProgress({ current: 0, total: 0 });
-        return;
       }
-    }
 
-    setStatus("converting");
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("format", outputFormat);
-    formData.append("fontFamily", fontFamily);
-    if (generatedCoverBase64) {
-      formData.append("coverImage", generatedCoverBase64);
-    }
-
-    try {
-      const response = await fetch("/api/convert", {
-        method: "POST",
-        body: formData,
+      // Single file conversion (100% client side)
+      await new Promise(resolve => setTimeout(resolve, 200));
+      const chapters = extractChapters(decodedText);
+      const epubBlob = await buildLocalEpub({
+        title: bookTitle,
+        author: "KindleTxt",
+        chapters,
+        coverBase64: generatedCoverBase64,
+        fontFamily,
       });
 
-      if (!response.ok) {
-        // 先尝试获取文本，防止 response.json() 报错
-        const errorText = await response.text();
-        let errorMessage = lang === "zh" ? "转换失败" : "Conversion failed";
-        
-        try {
-          // 如果是 JSON 格式的错误，解析它
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.error || errorMessage;
-        } catch (e) {
-          // 如果不是 JSON，说明可能是服务器层面的报错（如 413）
-          if (response.status === 413) {
-            errorMessage = t.serverError;
-          } else {
-            errorMessage = `${lang === "zh" ? "服务器异常" : "Server error"} (${response.status}): ${errorText.substring(0, 50)}...`;
-          }
-        }
-        throw new Error(errorMessage);
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const url = window.URL.createObjectURL(epubBlob);
       setDownloadUrl(url);
       setStatus("success");
     } catch (err) {
       console.error(err);
-      setError(err instanceof Error ? err.message : (lang === "zh" ? "转换过程中发生故障" : "An error occurred during conversion"));
+      setError(err instanceof Error ? err.message : (lang === "zh" ? "本地转换过程中发生故障" : "An error occurred during local conversion"));
       setStatus("error");
+      setBatchProgress({ current: 0, total: 0 });
     }
   };
 
@@ -821,7 +764,7 @@ export default function App() {
             <div className="bg-slate-900 text-white p-1.5 rounded-lg group-hover:scale-110 transition-transform">
               <BookOpen size={20} />
             </div>
-            <span className="font-semibold text-lg tracking-tight">KindleTxt</span>
+            <span className="font-semibold text-lg tracking-tight">eReaderTxt</span>
           </button>
           <nav className="flex items-center gap-3 sm:gap-6 text-sm font-medium text-slate-500">
             <div className="hidden md:flex portrait:hidden portrait:lg:flex items-center gap-6">
@@ -1086,33 +1029,45 @@ export default function App() {
                         </div>
                         
                         <div className="w-full flex flex-col gap-6">
-                          <div className="flex flex-col gap-3">
-                            <label className="text-sm font-semibold text-slate-700 block text-left">{t.outputFormat}</label>
-                          <div className="flex bg-slate-100 p-1 rounded-xl">
-                            <button
-                              onClick={() => setOutputFormat("epub")}
-                              className={`flex-1 py-2.5 px-4 text-sm font-medium rounded-lg transition-all ${
-                                outputFormat === "epub" 
-                                  ? "bg-white text-slate-900 shadow-sm" 
-                                  : "text-slate-500 hover:text-slate-700"
-                              }`}
-                            >
-                              EPUB ({lang === "zh" ? "推荐" : "Recommended"})
-                            </button>
-                            <button
-                              onClick={() => setOutputFormat("azw3")}
-                              className={`flex-1 py-2.5 px-4 text-sm font-medium rounded-lg transition-all ${
-                                outputFormat === "azw3" 
-                                  ? "bg-white text-slate-900 shadow-sm" 
-                                  : "text-slate-500 hover:text-slate-700"
-                              }`}
-                            >
-                              AZW3 ({lang === "zh" ? "老款" : "Legacy"})
-                            </button>
+                          <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl text-left">
+                            <div className="flex items-center gap-2.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                              <div>
+                                <span className="text-xs font-semibold text-slate-800 tracking-tight">输出格式 (Output Format)</span>
+                                <p className="text-[11px] text-slate-500">eReader 最佳排版 · 纯本地运算 (100% 保护隐私)</p>
+                              </div>
+                            </div>
+                            <span className="px-2.5 py-1 text-xs font-bold bg-slate-900 text-white rounded-lg tracking-wide">
+                              EPUB
+                            </span>
                           </div>
-                        </div>
 
-                        <div className="flex flex-col gap-3 mb-6">
+                          <div className="flex flex-col gap-3 mb-6">
+                            <label className="text-sm font-semibold text-slate-700 block text-left">{t.selectEncoding}</label>
+                            <div className="grid grid-cols-2 gap-2">
+                              {[
+                                { id: "auto", label: t.encodingAuto },
+                                { id: "utf-8", label: t.encodingUtf8 },
+                                { id: "gb18030", label: t.encodingGb },
+                                { id: "big5", label: t.encodingBig5 },
+                              ].map((enc) => (
+                                <button
+                                  key={enc.id}
+                                  onClick={() => setEncoding(enc.id as any)}
+                                  className={`py-2 px-2.5 text-xs font-medium rounded-xl border transition-all text-center truncate ${
+                                    encoding === enc.id
+                                      ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                                      : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50"
+                                  }`}
+                                  title={enc.label}
+                                >
+                                  {enc.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-3 mb-6">
                           <label className="text-sm font-semibold text-slate-700 block text-left">{t.selectFont}</label>
                           <div className="grid grid-cols-2 gap-2">
                             {[
@@ -1327,10 +1282,10 @@ export default function App() {
                     <div className="flex flex-col gap-3 w-full">
                       <a 
                         href={downloadUrl!} 
-                        download={file && file.size > 4.5 * 1024 * 1024 ? `${file?.name.replace(".txt", "")}_converted.zip` : `${file?.name.replace(".txt", "")}.${outputFormat}`}
+                        download={file && file.size > 4.5 * 1024 * 1024 ? `${file?.name.replace(".txt", "")}_converted.zip` : `${file?.name.replace(".txt", "")}.epub`}
                         className="w-full bg-green-600 text-white py-4 rounded-xl font-semibold hover:bg-green-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-green-100"
                       >
-                        {file && file.size > 4.5 * 1024 * 1024 ? t.downloadZip : `${t.downloadLabel} ${outputFormat.toUpperCase()}`}
+                        {file && file.size > 4.5 * 1024 * 1024 ? t.downloadZip : `${t.downloadLabel} EPUB`}
                         <Download size={18} />
                       </a>
                       <button 
@@ -1347,14 +1302,16 @@ export default function App() {
                       </div>
                       <p>
                         {t.kindleTipPrefix}
-                        <a 
-                          href="https://www.amazon.com/sendtokindle" 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="font-bold underline decoration-2 underline-offset-2 hover:text-indigo-600 transition-colors"
-                        >
-                          {t.kindleTipLink}
-                        </a>
+                        {t.kindleTipLink ? (
+                          <a 
+                            href="https://www.amazon.com/sendtokindle" 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="font-bold underline decoration-2 underline-offset-2 hover:text-indigo-600 transition-colors ml-1"
+                          >
+                            {t.kindleTipLink}
+                          </a>
+                        ) : null}
                         {t.kindleTipSuffix}
                       </p>
                     </div>
