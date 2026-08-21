@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
 import JSZip from "jszip";
 import jschardet from "jschardet";
-import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, BookOpen, Smartphone, Sparkles, Image as ImageIcon, Info, X, ShieldCheck, Users, Eye, BookMarked } from "lucide-react";
+import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, BookOpen, Smartphone, Sparkles, Image as ImageIcon, Info, X, ShieldCheck, Users, Eye, BookMarked, FileCode } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { buildLocalEpub, extractChapters, decodeBufferToText } from "./epubBuilder";
+import { parsePdfBuffer } from "./pdfParser";
 
 /**
  * eReaderTxt - eReader Ebook Converter
- * A minimal, elegant tool to convert TXT files to eReader-compatible EPUB format.
+ * A minimal, elegant tool to convert TXT & PDF files to eReader-compatible EPUB format.
  */
 
 type ConversionStatus = "idle" | "uploading" | "generating_cover" | "converting" | "success" | "error";
@@ -31,8 +32,8 @@ const translations = {
     aboutAuthor: "本应用由 Alex孟博士 开发",
     aboutEnjoy: "祝您阅读愉快 ：）",
     guideTitle: "📖 使用指南",
-    guideStep1: "准备好您的 TXT 文档。建议确保文件编码为 UTF-8，以避免转换后出现乱码。",
-    guideStep2: "在首页点击上传区域，或者直接将文件拖拽进来。",
+    guideStep1: "准备好您的 TXT 小说或 PDF 文档。对于 TXT 建议确保编码为 UTF-8；PDF 自动支持文字智能重排与目录提取。",
+    guideStep2: "在首页点击上传区域，或者直接将 TXT / PDF 文件拖拽进来。",
     guideStep3: "点击“开始转换”。我们会自动为您识别章节（如：第一章、Chapter 1等）并生成电子书目录。",
     guideStep4: "下载生成的 EPUB 文件。您可以通过 USB 数据线复制到 eReader，或使用官方无线传输/邮箱服务发送。",
     guideStep5: "重要：若要在 eReader 上看到您选定的字体，请在阅读页面点击「Aa」-「字体」，选择「出版者字体」(Publisher Font)。",
@@ -42,17 +43,17 @@ const translations = {
     faqQ2: "如何传输到 eReader 设备？",
     faqA2: "转换完成后下载 EPUB 文件，您可以通过 USB 数据线拷贝到 eReader，也可以使用设备专属的无线传输或邮箱推送服务发送至您的设备。",
     faqQ3: "发现文件转换后有乱码怎么办？",
-    faqA3: "这是由于 TXT 文件编码不是 UTF-8 导致的。请尝试在电脑上用记事本打开 TXT，选择“另存为”，在编码处选择 UTF-8，然后重新上传转换。",
+    faqA3: "这是由于 TXT 文件编码不是 UTF-8 导致的。请尝试在编码设置中切换为 GBK 或在电脑上另存为 UTF-8 后重新上传。（PDF 文件无需担心编码）。",
     faqQ4: "我的隐私安全吗？",
-    faqA4: "绝对安全。所有转换排版均在您的浏览器本地完成（纯前端本地运算），您的书稿文本绝不会上传到任何服务器，100% 保护您的隐私与版权。",
+    faqA4: "绝对安全。所有 TXT 与 PDF 解析、排版均在您的浏览器本地完成（纯前端本地运算），您的书稿文本绝不会上传到任何服务器，100% 保护您的隐私与版权。",
     faqQ5: "章节识别不准确是怎么回事？",
-    faqA5: "我们通过正则匹配常见的章节标识。如果您的文档章节格式非常特殊，可能无法识别。建议确保章节名单独占一行。",
+    faqA5: "我们通过正则及 PDF 目录书签匹配章节。如果您的文档章节格式非常特殊，可能无法精准匹配，但正文均会完整保留。",
     faqQ6: "为什么在部分 eReader 软件里无法调整字体粗细？",
     faqA6: "当您在转换时选择了特定的排版字体（如苹方、宋体），eReader 会以“出版者字体”模式运行，由于系统兼容性限制，此时往往会禁用其原生的粗细调整功能。如果您想拥有完整的加粗控制自由，请在转换时选择“系统默认”，这样在阅读时就可以自由切换 eReader 内置字体并调整粗细。",
     mainTitle: "让阅读回归纯粹",
-    mainSub: "将您的本地 TXT 文档轻松转换为 eReader 支持的最佳格式 (EPUB)，自动章节识别，极致排版体验。",
-    dropZone: "点击或拖拽 TXT 文件到此处",
-    dropZoneSub: "支持最大 50MB 的 TXT 纯文本文件（超大文件将自动分卷）",
+    mainSub: "将您的本地 TXT / PDF 文档轻松转换为 eReader 支持的最佳格式 (EPUB)，自动章节识别与版面智能重排，极致排版体验。",
+    dropZone: "点击或拖拽 TXT / PDF 文件到此处",
+    dropZoneSub: "支持最大 50MB 的 TXT 纯文本与 PDF 文档（超大文件自动分卷）",
     remove: "移除",
     batchInfo: "该文件较大，系统将自动将其平均拆分为多个较小的分卷（约 3.5MB 每卷）在本地进行转换，并打包为一个 ZIP 文件供您下载。",
     aiCover: "使用 AI 自动生成专属封面",
@@ -66,6 +67,8 @@ const translations = {
     parsingLarge: "请您稍等片刻……",
     convertingVolume: "正在按照分卷逐一为您转换和排版，请耐心等待。",
     convertingStandard: "正在为您识别章节并重新排版，这可能需要几秒钟时间。",
+    convertingPdf: "正在解析 PDF 页面并智能重排正文...",
+    pdfScannedWarning: "未能从该 PDF 提取到有效文字，可能为纯扫描图片版。建议使用文字版 PDF 或 TXT 文档。",
     successTitle: "转换完成！",
     successSub: "您的电子书已准备就绪。",
     downloadZip: "立即下载 ZIP",
@@ -76,14 +79,14 @@ const translations = {
     kindleTipSuffix: "",
     errorTitle: "出错了",
     btnRetry: "返回重试",
-    feature1Title: "多设备适配",
-    feature1Sub: "生成的 EPUB 完美适配各类 eReader、墨水屏阅读器及电纸书设备。",
-    feature2Title: "自动章节识别",
-    feature2Sub: "智能算法自动识别文档中的章节标识，并生成目录索引。",
+    feature1Title: "多格式与多设备适配",
+    feature1Sub: "支持 TXT 小说与 PDF 文档，生成的 EPUB 完美适配各类 eReader、墨水屏阅读器及电纸书设备。",
+    feature2Title: "自动智能重排与目录",
+    feature2Sub: "智能算法自动识别章节与 PDF 书签大纲，去除冗余页眉页码并生成精美目录。",
     footer: "© 2026 eReaderTxt. 隐私声明：所有转换与排版均在浏览器本地完成，文件绝不上传服务器，全面保护您的隐私与版权。",
-    onlyTxt: "目前仅支持 TXT 格式文件。",
+    onlyTxt: "目前支持 TXT 和 PDF 格式文件。",
     fileTooLarge: "文件过大，为了保证您的设备运行稳定，暂不支持超过 50MB 的文件。",
-    serverError: "文件太大，超出了服务器处理上限 (4.5MB)",
+    serverError: "文件太大，超出了处理上限",
     batchError: "分卷转换过程中发生故障",
     partFailed: "部分转换失败",
     modalClose: "我知道了",
@@ -105,6 +108,17 @@ const translations = {
     encodingUtf8: "UTF-8 (国际标准)",
     encodingGb: "GBK / GB18030 (简体中文)",
     encodingBig5: "Big5 (繁体中文)",
+    pdfOcrTitle: "扫描件 OCR 识别：",
+    pdfOcrAuto: "智能自动检测 (推荐)",
+    pdfOcrForce: "强制启用 OCR (扫描/图片版)",
+    pdfOcrLangLabel: "OCR 识别语种：",
+    pdfOcrLangZh: "中英双语识别",
+    pdfOcrLangEn: "纯英文识别",
+    pdfOcrLangZht: "繁体中文识别",
+    pdfOcrSuccessNote: "✨ 已自动完成本地 OCR 文字识别与重排",
+    cleanWatermarkTitle: "智能去水印与防噪：",
+    cleanWatermarkOn: "开启 (清除背景浅灰倾斜水印/工号/广告)",
+    cleanWatermarkOff: "保留原样",
     statsTotalViews: "总浏览量",
     statsUniqueVisitors: "独立访客",
     statsTotalConversions: "已转换书籍",
@@ -126,28 +140,28 @@ const translations = {
     aboutAuthor: "This app is developed by Dr. Alex Meng",
     aboutEnjoy: "Happy reading :)",
     guideTitle: "📖 User Guide",
-    guideStep1: "Prepare your TXT document. Ensure the encoding is UTF-8 to avoid garbled characters after conversion.",
-    guideStep2: "Click the upload area on the home page or directly drag and drop the file.",
+    guideStep1: "Prepare your TXT or PDF document. Smart text reflow, OCR for scanned PDFs, and chapter outline extraction are supported.",
+    guideStep2: "Click the upload area on the home page or directly drag and drop your TXT / PDF file.",
     guideStep3: "Click 'Start Conversion'. We will automatically recognize chapters (e.g., Chapter 1, Section 1) and generate a Table of Contents.",
     guideStep4: "Download the generated EPUB file. You can copy it to eReader via cable or use wireless transfer services.",
     guideStep5: "Important: To see your selected font on eReader, tap 'Aa' - 'Font' and select 'Publisher Font' while reading.",
     faqTitle: "❓ Frequently Asked Questions",
     faqQ1: "Why EPUB format?",
-    faqA1: "Modern eReaders and apps natively support the EPUB format. EPUB offers better compatibility, typography, and layout quality.",
+    faqA1: "Modern eReaders and apps natively support the EPUB format. EPUB offers better compatibility, typography, and reflowable layout quality.",
     faqQ2: "How to transfer files to eReader?",
     faqA2: "After conversion, download the EPUB file. You can transfer the file to your eReader via USB cable, email push, or wireless sync services.",
     faqQ3: "What if the converted file has garbled characters?",
-    faqA3: "This is usually due to the TXT file not being UTF-8 encoded. Try opening it with Notepad, choosing 'Save As', selecting UTF-8 encoding, and re-uploading.",
+    faqA3: "For TXT files, try switching encoding to GBK or UTF-8. PDF files are automatically parsed without encoding issues.",
     faqQ4: "Is my privacy secure?",
-    faqA4: "Absolutely. All conversions and typesetting are performed locally in your browser. Your files are never uploaded to any server, 100% protecting your privacy and copyright.",
+    faqA4: "Absolutely. All conversions, including local OCR for scanned PDFs, are performed locally in your browser. Your files are never uploaded to any server, 100% protecting your privacy and copyright.",
     faqQ5: "Why is chapter recognition inaccurate?",
-    faqA5: "We use regex to match common chapter patterns. If your document has unusual formatting, it might not be recognized. Ensure chapter titles are on their own lines.",
+    faqA5: "We use regex and PDF bookmarks to match chapters. If formatting is unusual, content will still be preserved sequentially.",
     faqQ6: "Why can't I adjust font weight in the eReader app?",
     faqA6: "When you select a specific font (like PingFang or Songti), eReader operates in 'Publisher Font' mode. Due to system compatibility, this often disables native thickness adjustment. For full control over boldness, please choose 'System Default' during conversion to use built-in fonts.",
     mainTitle: "Pure Reading Experience",
-    mainSub: "Effortlessly convert your local TXT documents to the best format for eReader (EPUB), with smart chapter recognition and clean layout.",
-    dropZone: "Click or drag TXT file here",
-    dropZoneSub: "Supports TXT files up to 50MB (large files will be automatically split)",
+    mainSub: "Effortlessly convert your local TXT and PDF documents to the best format for eReader (EPUB), with smart chapter recognition, OCR support, and clean layout.",
+    dropZone: "Click or drag TXT / PDF file here",
+    dropZoneSub: "Supports TXT and PDF files up to 50MB (large files will be automatically split)",
     remove: "Remove",
     batchInfo: "This file is large. The system will automatically split it into smaller parts (~3.5MB each) locally and package them into a ZIP file for you.",
     aiCover: "Generate exclusive AI cover",
@@ -161,6 +175,8 @@ const translations = {
     parsingLarge: "Please wait a moment...",
     convertingVolume: "Converting volumes one by one, thank you for your patience.",
     convertingStandard: "Recognizing chapters and formatting, this may take a few seconds.",
+    convertingPdf: "Parsing PDF pages and reflowing text...",
+    pdfScannedWarning: "No extractable text found in this PDF. It may be a scanned image document. Please use text-based PDFs or TXT files.",
     successTitle: "Conversion Successful!",
     successSub: "Your E-book is ready.",
     downloadZip: "Download ZIP",
@@ -171,14 +187,14 @@ const translations = {
     kindleTipSuffix: "",
     errorTitle: "Something went wrong",
     btnRetry: "Back & Retry",
-    feature1Title: "Multi-device Support",
-    feature1Sub: "Generated EPUB files work perfectly on all eReader and E-ink devices.",
-    feature2Title: "Smart Chapters",
-    feature2Sub: "Intelligent algorithm automatically identifies chapter markers and generates a TOC.",
+    feature1Title: "Multi-device & Multi-format",
+    feature1Sub: "Supports TXT and PDF (including scanned PDF OCR). Generated EPUB files work perfectly on all eReader and E-ink devices.",
+    feature2Title: "Smart Chapters & Reflow",
+    feature2Sub: "Intelligent algorithm automatically identifies chapter markers, PDF bookmarks, and generates a clean TOC.",
     footer: "© 2026 eReaderTxt. Privacy: All conversion and formatting happen locally in your browser. No files are uploaded to any server.",
-    onlyTxt: "Currently only supports TXT files.",
+    onlyTxt: "Currently supports TXT and PDF files.",
     fileTooLarge: "File too large. To ensure stability, files over 50MB are not supported.",
-    serverError: "File too large for server processing (4.5MB limit)",
+    serverError: "File too large for processing",
     batchError: "An error occurred during batch conversion.",
     partFailed: "Part failed to convert",
     modalClose: "Got it",
@@ -192,6 +208,17 @@ const translations = {
     encodingUtf8: "UTF-8 (Standard)",
     encodingGb: "GBK / GB18030 (Simplified)",
     encodingBig5: "Big5 (Traditional)",
+    pdfOcrTitle: "Scanned PDF OCR:",
+    pdfOcrAuto: "Auto-detect (Recommended)",
+    pdfOcrForce: "Force OCR (For scans/images)",
+    pdfOcrLangLabel: "OCR Recognition Language:",
+    pdfOcrLangZh: "Chinese + English",
+    pdfOcrLangEn: "English Only",
+    pdfOcrLangZht: "Traditional Chinese",
+    pdfOcrSuccessNote: "✨ Successfully extracted text via in-browser local OCR",
+    cleanWatermarkTitle: "Smart De-watermark & Denoise:",
+    cleanWatermarkOn: "Enabled (Remove background faint watermarks/IDs/ads)",
+    cleanWatermarkOff: "Keep Raw",
     statsTotalViews: "Page Views",
     statsUniqueVisitors: "Unique Visitors",
     statsTotalConversions: "Books Converted",
@@ -373,15 +400,10 @@ function generateDefaultCover(bookTitle: string, backgroundImageSrc?: string): P
       ctx.shadowOffsetX = 1;
       ctx.shadowOffsetY = 1;
 
-      // Draw Header text
-      ctx.fillStyle = "rgba(241, 245, 249, 0.9)";
-      ctx.font = '500 16px "PingFang SC", "Noto Sans SC", sans-serif';
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("E R E A D E R T X T   E B O O K", 300, 100);
-
       // Draw Title text
       ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
       
       // Set appropriate font size depending on title length for better poster style layout
       let fontSize = 48;
@@ -397,7 +419,7 @@ function generateDefaultCover(bookTitle: string, backgroundImageSrc?: string): P
       const lines = wrapText(ctx, bookTitle, 460);
       const lineHeight = fontSize * 1.45;
       const totalHeight = lines.length * lineHeight;
-      let startY = 380 - (totalHeight / 2);
+      let startY = 400 - (totalHeight / 2);
       if (startY < 180) startY = 180;
 
       lines.forEach((line, index) => {
@@ -408,11 +430,6 @@ function generateDefaultCover(bookTitle: string, backgroundImageSrc?: string): P
       const accentY = startY + totalHeight + 35;
       ctx.fillStyle = styleInfo.accentColor;
       ctx.fillRect(250, accentY, 100, 3);
-
-      // Draw Footer text
-      ctx.fillStyle = "rgba(241, 245, 249, 0.85)";
-      ctx.font = 'italic 15px "PingFang SC", "Noto Sans SC", sans-serif';
-      ctx.fillText("精心排版 · 专属阅读", 300, 700);
 
       // Reset shadows
       ctx.shadowColor = "transparent";
@@ -477,6 +494,11 @@ export default function App() {
   const customCoverInputRef = useRef<HTMLInputElement>(null);
   const [fontFamily, setFontFamily] = useState<"default" | "serif" | "sans" | "kaiti">("default");
   const [encoding, setEncoding] = useState<"auto" | "utf-8" | "gb18030" | "big5">("auto");
+  const [forceOcr, setForceOcr] = useState(false);
+  const [ocrLang, setOcrLang] = useState<"chi_sim+eng" | "eng" | "chi_tra+eng">("chi_sim+eng");
+  const [removeWatermark, setRemoveWatermark] = useState(true);
+  const [pdfProgressMsg, setPdfProgressMsg] = useState<string>("");
+  const [isOcrResult, setIsOcrResult] = useState(false);
   
   const [feedbackContent, setFeedbackContent] = useState("");
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
@@ -532,7 +554,7 @@ export default function App() {
   useEffect(() => {
     if (coverMode === "custom" && customCoverBase64) {
       if (customCoverWithTitle && file) {
-        const bookName = file.name.replace(/\.txt$/i, "");
+        const bookName = file.name.replace(/\.(txt|pdf)$/i, "");
         generateDefaultCover(bookName, customCoverBase64).then(setCustomCoverPreview);
       } else {
         setCustomCoverPreview(customCoverBase64);
@@ -544,7 +566,10 @@ export default function App() {
 
   const processFile = (selectedFile: File) => {
     setError(null);
-    if (selectedFile.type !== "text/plain" && !selectedFile.name.toLowerCase().endsWith(".txt")) {
+    const isTxt = selectedFile.type === "text/plain" || selectedFile.name.toLowerCase().endsWith(".txt");
+    const isPdf = selectedFile.type === "application/pdf" || selectedFile.name.toLowerCase().endsWith(".pdf");
+    
+    if (!isTxt && !isPdf) {
       setError(t.onlyTxt);
       setFile(null);
       return;
@@ -587,7 +612,7 @@ export default function App() {
     setIsDragging(false);
     const selectedFile = e.dataTransfer.files?.[0];
     if (selectedFile) {
-      if (status !== "idle" && status !== "error") return;
+      if (status !== "idle" && status !== "error" && status !== "success") return;
       processFile(selectedFile);
     }
   };
@@ -637,14 +662,16 @@ export default function App() {
     setStatus("uploading");
     setError(null);
 
+    const isPdf = file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf";
+    const bookTitleBase = file.name.replace(/\.(txt|pdf)$/i, "");
+
     let generatedCoverBase64: string | null = null;
     
     if (coverMode === "custom" && customCoverBase64) {
       if (customCoverWithTitle) {
         setStatus("generating_cover");
         try {
-          const bookName = file.name.replace(/\.txt$/i, "");
-          generatedCoverBase64 = await generateDefaultCover(bookName, customCoverBase64);
+          generatedCoverBase64 = await generateDefaultCover(bookTitleBase, customCoverBase64);
         } catch (err) {
           console.error("Failed to generate custom cover with title:", err);
           generatedCoverBase64 = customCoverBase64;
@@ -655,13 +682,12 @@ export default function App() {
     } else if (coverMode === "ai") {
       setStatus("generating_cover");
       try {
-        const bookName = file.name.replace(/\.txt$/i, "");
-        const styleInfo = getBookStyleInfo(bookName);
-        const promptString = `A gorgeous, elegant and clean abstract background illustration or textured art theme for a book cover. Style keyword: ${styleInfo.englishStyle}. Specific visual elements inspired by the title "${bookName}". Strictly NO text, NO letters, NO words, minimal style, empty space in the center, professional color palette, high resolution digital painting.`;
+        const styleInfo = getBookStyleInfo(bookTitleBase);
+        const promptString = `A gorgeous, elegant and clean abstract background illustration or textured art theme for a book cover. Style keyword: ${styleInfo.englishStyle}. Specific visual elements inspired by the title "${bookTitleBase}". Strictly NO text, NO letters, NO words, minimal style, empty space in the center, professional color palette, high resolution digital painting.`;
         
         // 使用免费免 Key 的图片生成服务
         const coverUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(promptString)}?width=600&height=800&nologo=true`;
-        generatedCoverBase64 = await generateDefaultCover(bookName, coverUrl);
+        generatedCoverBase64 = await generateDefaultCover(bookTitleBase, coverUrl);
       } catch (err) {
         console.error("Failed to generate cover:", err);
       }
@@ -670,8 +696,7 @@ export default function App() {
     // fallback generator for non-AI mode or failed AI fetch
     if (!generatedCoverBase64) {
       try {
-        const bookName = file.name.replace(/\.txt$/i, "");
-        generatedCoverBase64 = await generateDefaultCover(bookName);
+        generatedCoverBase64 = await generateDefaultCover(bookTitleBase);
       } catch (err) {
         console.error("Failed to generate default canvas cover:", err);
       }
@@ -682,9 +707,57 @@ export default function App() {
 
     try {
       const buffer = await file.arrayBuffer();
+
+      // Handle PDF conversion
+      if (isPdf) {
+        setBatchProgress({ current: 0, total: -2 }); // -2 indicates PDF parsing
+        setPdfProgressMsg(t.convertingPdf);
+        setIsOcrResult(false);
+
+        const pdfResult = await parsePdfBuffer(
+          buffer,
+          (info) => {
+            setBatchProgress({ current: info.current, total: info.total });
+            if (info.message) {
+              setPdfProgressMsg(info.message);
+            }
+          },
+          {
+            forceOcr,
+            ocrLang,
+            removeWatermark
+          }
+        );
+
+        if (!pdfResult.rawText || !pdfResult.rawText.trim()) {
+          throw new Error(t.pdfScannedWarning);
+        }
+
+        setIsOcrResult(!!pdfResult.isOcr);
+
+        const finalBookTitle = pdfResult.title && pdfResult.title.length > 1 ? pdfResult.title : bookTitleBase;
+        const finalAuthor = pdfResult.author && pdfResult.author.length > 1 ? pdfResult.author : "eReaderTxt";
+
+        const epubBlob = await buildLocalEpub({
+          title: finalBookTitle,
+          author: finalAuthor,
+          chapters: pdfResult.chapters,
+          coverBase64: generatedCoverBase64,
+          fontFamily,
+        });
+
+        const url = window.URL.createObjectURL(epubBlob);
+        setDownloadUrl(url);
+        setStatus("success");
+        trackConversionSuccess();
+        setBatchProgress({ current: 0, total: 0 });
+        return;
+      }
+
+      // Handle TXT conversion
       const uint8Array = new Uint8Array(buffer);
       const decodedText = decodeBufferToText(uint8Array, jschardet, encoding);
-      const bookTitle = file.name.replace(/\.txt$/i, "");
+      const bookTitle = bookTitleBase;
 
       if (file.size > 4.5 * 1024 * 1024) {
         setBatchProgress({ current: 0, total: -1 });
@@ -1026,7 +1099,7 @@ export default function App() {
                           type="file" 
                           ref={fileInputRef}
                           onChange={handleFileChange}
-                          accept=".txt"
+                          accept=".txt,.pdf,text/plain,application/pdf"
                           className="hidden" 
                         />
                       </div>
@@ -1037,12 +1110,25 @@ export default function App() {
                             error ? "bg-red-50 border-red-100" : "bg-slate-50 border-slate-100"
                           }`}>
                           <div className={`w-12 h-12 rounded-xl shadow-sm flex items-center justify-center transition-colors ${
-                            error ? "bg-white text-red-500" : "bg-white text-slate-400"
+                            error 
+                              ? "bg-white text-red-500" 
+                              : (file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf")
+                                ? "bg-red-50 text-red-600"
+                                : "bg-white text-slate-400"
                           }`}>
-                            {error ? <AlertCircle size={20} /> : <FileText size={20} />}
+                            {error ? <AlertCircle size={20} /> : (
+                              (file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf")
+                                ? <span className="font-bold text-xs">PDF</span>
+                                : <FileText size={20} />
+                            )}
                           </div>
                           <div className="flex-1 min-w-0 text-left">
-                            <h3 className={`font-medium truncate ${error ? "text-red-900" : "text-slate-900"}`}>{file.name}</h3>
+                            <div className="flex items-center gap-2">
+                              <h3 className={`font-medium truncate ${error ? "text-red-900" : "text-slate-900"}`}>{file.name}</h3>
+                              {(file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf") && (
+                                <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-700 rounded">PDF</span>
+                              )}
+                            </div>
                             <p className={`text-sm ${error ? "text-red-600" : "text-slate-500"}`}>
                               {(file.size / 1024 / 1024).toFixed(2)} MB
                             </p>
@@ -1064,8 +1150,8 @@ export default function App() {
                               </p>
                               <p className="text-xs text-slate-500 mt-0.5">
                                 {lang === "zh" 
-                                  ? `智能算法已分析书名，并自动匹配 ${getBookStyleInfo(file.name.replace(/\.txt$/i, "")).chineseTheme} 专属设计风格` 
-                                  : `Analyzed title, matched ${getBookStyleInfo(file.name.replace(/\.txt$/i, "")).chineseTheme} theme design style`}
+                                  ? `智能算法已分析书名，并自动匹配 ${getBookStyleInfo(file.name.replace(/\.(txt|pdf)$/i, "")).chineseTheme} 专属设计风格` 
+                                  : `Analyzed title, matched ${getBookStyleInfo(file.name.replace(/\.(txt|pdf)$/i, "")).chineseTheme} theme design style`}
                               </p>
                             </div>
                           </div>
@@ -1078,7 +1164,7 @@ export default function App() {
                           </div>
                         )}
 
-                        {file.size > 4.5 * 1024 * 1024 && !error && status === "idle" && (
+                        {file.size > 4.5 * 1024 * 1024 && !error && status === "idle" && !(file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf") && (
                           <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100/50 flex gap-3 text-blue-800 text-sm text-left">
                             <Info size={18} className="shrink-0 mt-0.5" />
                             <p>{t.batchInfo}</p>
@@ -1109,30 +1195,112 @@ export default function App() {
                             </span>
                           </div>
 
-                          <div className="flex flex-col gap-3 mb-6">
-                            <label className="text-sm font-semibold text-slate-700 block text-left">{t.selectEncoding}</label>
-                            <div className="grid grid-cols-2 gap-2">
-                              {[
-                                { id: "auto", label: t.encodingAuto },
-                                { id: "utf-8", label: t.encodingUtf8 },
-                                { id: "gb18030", label: t.encodingGb },
-                                { id: "big5", label: t.encodingBig5 },
-                              ].map((enc) => (
-                                <button
-                                  key={enc.id}
-                                  onClick={() => setEncoding(enc.id as any)}
-                                  className={`py-2 px-2.5 text-xs font-medium rounded-xl border transition-all text-center truncate ${
-                                    encoding === enc.id
-                                      ? "bg-slate-900 text-white border-slate-900 shadow-sm"
-                                      : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50"
-                                  }`}
-                                  title={enc.label}
-                                >
-                                  {enc.label}
-                                </button>
-                              ))}
+                          {!(file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf") && (
+                            <div className="flex flex-col gap-3 mb-6">
+                              <label className="text-sm font-semibold text-slate-700 block text-left">{t.selectEncoding}</label>
+                              <div className="grid grid-cols-2 gap-2">
+                                {[
+                                  { id: "auto", label: t.encodingAuto },
+                                  { id: "utf-8", label: t.encodingUtf8 },
+                                  { id: "gb18030", label: t.encodingGb },
+                                  { id: "big5", label: t.encodingBig5 },
+                                ].map((enc) => (
+                                  <button
+                                    key={enc.id}
+                                    onClick={() => setEncoding(enc.id as any)}
+                                    className={`py-2 px-2.5 text-xs font-medium rounded-xl border transition-all text-center truncate ${
+                                      encoding === enc.id
+                                        ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50"
+                                    }`}
+                                    title={enc.label}
+                                  >
+                                    {enc.label}
+                                  </button>
+                                ))}
+                              </div>
                             </div>
-                          </div>
+                          )}
+
+                          {(file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf") && (
+                            <div className="flex flex-col gap-4 mb-6 p-4 bg-slate-50 border border-slate-200/80 rounded-2xl">
+                              <div className="flex flex-col gap-2">
+                                <label className="text-sm font-semibold text-slate-800 block text-left">{t.pdfOcrTitle}</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <button
+                                    onClick={() => setForceOcr(false)}
+                                    className={`py-2 px-2.5 text-xs font-medium rounded-xl border transition-all text-center ${
+                                      !forceOcr
+                                        ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50"
+                                    }`}
+                                  >
+                                    {t.pdfOcrAuto}
+                                  </button>
+                                  <button
+                                    onClick={() => setForceOcr(true)}
+                                    className={`py-2 px-2.5 text-xs font-medium rounded-xl border transition-all text-center ${
+                                      forceOcr
+                                        ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50"
+                                    }`}
+                                  >
+                                    {t.pdfOcrForce}
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col gap-2">
+                                <label className="text-xs font-medium text-slate-600 block text-left">{t.pdfOcrLangLabel}</label>
+                                <div className="grid grid-cols-3 gap-1.5">
+                                  {[
+                                    { id: "chi_sim+eng", label: t.pdfOcrLangZh },
+                                    { id: "eng", label: t.pdfOcrLangEn },
+                                    { id: "chi_tra+eng", label: t.pdfOcrLangZht },
+                                  ].map((langItem) => (
+                                    <button
+                                      key={langItem.id}
+                                      onClick={() => setOcrLang(langItem.id as any)}
+                                      className={`py-1.5 px-2 text-[11px] font-medium rounded-lg border transition-all text-center truncate ${
+                                        ocrLang === langItem.id
+                                          ? "bg-slate-800 text-white border-slate-800 shadow-sm"
+                                          : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"
+                                      }`}
+                                      title={langItem.label}
+                                    >
+                                      {langItem.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col gap-2">
+                                <label className="text-xs font-medium text-slate-600 block text-left">{t.cleanWatermarkTitle}</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <button
+                                    onClick={() => setRemoveWatermark(true)}
+                                    className={`py-1.5 px-2 text-[11px] font-medium rounded-lg border transition-all text-center ${
+                                      removeWatermark
+                                        ? "bg-slate-800 text-white border-slate-800 shadow-sm"
+                                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"
+                                    }`}
+                                  >
+                                    {t.cleanWatermarkOn}
+                                  </button>
+                                  <button
+                                    onClick={() => setRemoveWatermark(false)}
+                                    className={`py-1.5 px-2 text-[11px] font-medium rounded-lg border transition-all text-center ${
+                                      !removeWatermark
+                                        ? "bg-slate-800 text-white border-slate-800 shadow-sm"
+                                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"
+                                    }`}
+                                  >
+                                    {t.cleanWatermarkOff}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
 
                           <div className="flex flex-col gap-3 mb-6">
                           <label className="text-sm font-semibold text-slate-700 block text-left">{t.selectFont}</label>
@@ -1320,14 +1488,24 @@ export default function App() {
                     </div>
                     <h3 className="text-xl font-semibold mb-2">
                         {status === "generating_cover" ? t.drawingCover : 
-                         (batchProgress.total > 0 ? (lang === "zh" ? `正在转换 (分卷 ${batchProgress.current}/${batchProgress.total})...` : `Converting (Volume ${batchProgress.current}/${batchProgress.total})...`) : 
-                          batchProgress.total === -1 ? t.preparing : t.btnConverting)}
+                         (batchProgress.total > 0 ? (
+                           (file?.name.toLowerCase().endsWith(".pdf") || file?.type === "application/pdf")
+                             ? (pdfProgressMsg || (lang === "zh" ? `正在解析与重排 PDF (${batchProgress.current}/${batchProgress.total} 页)...` : `Reflowing PDF (Page ${batchProgress.current}/${batchProgress.total})...`))
+                             : (lang === "zh" ? `正在转换 (分卷 ${batchProgress.current}/${batchProgress.total})...` : `Converting (Volume ${batchProgress.current}/${batchProgress.total})...`)
+                         ) : 
+                          batchProgress.total === -1 ? t.preparing :
+                          batchProgress.total === -2 ? (pdfProgressMsg || t.convertingPdf) : t.btnConverting)}
                     </h3>
-                    <p className="text-slate-500 text-center max-w-xs">
+                    <p className="text-slate-500 text-center max-w-xs text-sm">
                       {status === "generating_cover" 
                         ? t.preparingCover
-                        : (batchProgress.total > 0 ? t.convertingVolume : 
-                           batchProgress.total === -1 ? t.parsingLarge : t.convertingStandard)}
+                        : (batchProgress.total > 0 ? (
+                            (file?.name.toLowerCase().endsWith(".pdf") || file?.type === "application/pdf")
+                              ? (pdfProgressMsg || t.convertingPdf)
+                              : t.convertingVolume
+                          ) : 
+                           batchProgress.total === -1 ? t.parsingLarge :
+                           batchProgress.total === -2 ? (pdfProgressMsg || t.convertingPdf) : t.convertingStandard)}
                     </p>
                   </motion.div>
                 )}
@@ -1344,15 +1522,22 @@ export default function App() {
                       <CheckCircle size={36} />
                     </div>
                     <h3 className="text-2xl font-semibold mb-2">{t.successTitle}</h3>
-                    <p className="text-slate-500 mb-8">{t.successSub}</p>
+                    <p className="text-slate-500 mb-4">{t.successSub}</p>
+                    
+                    {isOcrResult && (
+                      <div className="mb-6 px-3.5 py-1.5 bg-amber-50 border border-amber-200/80 rounded-full text-amber-800 text-xs font-medium flex items-center gap-1.5">
+                        <Sparkles size={14} className="text-amber-600" />
+                        <span>{t.pdfOcrSuccessNote}</span>
+                      </div>
+                    )}
                     
                     <div className="flex flex-col gap-3 w-full">
                       <a 
                         href={downloadUrl!} 
-                        download={file && file.size > 4.5 * 1024 * 1024 ? `${file?.name.replace(".txt", "")}_converted.zip` : `${file?.name.replace(".txt", "")}.epub`}
+                        download={file && file.size > 4.5 * 1024 * 1024 && !file.name.toLowerCase().endsWith(".pdf") ? `${file?.name.replace(/\.(txt|pdf)$/i, "")}_converted.zip` : `${file?.name.replace(/\.(txt|pdf)$/i, "")}.epub`}
                         className="w-full bg-green-600 text-white py-4 rounded-xl font-semibold hover:bg-green-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-green-100"
                       >
-                        {file && file.size > 4.5 * 1024 * 1024 ? t.downloadZip : `${t.downloadLabel} EPUB`}
+                        {file && file.size > 4.5 * 1024 * 1024 && !file.name.toLowerCase().endsWith(".pdf") ? t.downloadZip : `${t.downloadLabel} EPUB`}
                         <Download size={18} />
                       </a>
                       <button 

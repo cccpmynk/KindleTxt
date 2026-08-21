@@ -74,18 +74,48 @@ export async function buildLocalEpub(options: LocalEpubOptions): Promise<Blob> {
 body {
   margin: 5%;
   text-align: justify;
+  line-height: 1.75;
   ${fontCss}
 }
 h1, h2, h3 {
   text-align: center;
-  font-weight: bold;
-  margin: 1.5em 0 1em 0;
+  font-weight: 600;
+  margin: 1.8em 0 1.2em 0;
+  line-height: 1.4;
+  page-break-inside: avoid;
+}
+h2 {
+  font-size: 1.4em;
+  padding-bottom: 0.3em;
 }
 p {
   text-indent: 2em;
-  margin-top: 0.5em;
-  margin-bottom: 0.5em;
-  line-height: 1.65;
+  margin-top: 0.6em;
+  margin-bottom: 0.6em;
+  line-height: 1.75;
+  word-break: break-word;
+}
+.toc-title {
+  text-align: center;
+  font-size: 1.6em;
+  margin-bottom: 1.5em;
+  letter-spacing: 0.2em;
+}
+ol.toc-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 auto;
+  max-width: 90%;
+}
+ol.toc-list li {
+  margin: 0.7em 0;
+  padding: 0.3em 0;
+  border-bottom: 1px dashed rgba(128, 128, 128, 0.25);
+}
+ol.toc-list li a {
+  text-decoration: none;
+  color: inherit;
+  display: block;
 }
 .cover-container {
   text-align: center;
@@ -107,24 +137,38 @@ p {
   // 4. Cover image if provided
   let hasCover = false;
   let coverMediaType = 'image/jpeg';
+  let coverFileName = 'cover.jpg';
   if (options.coverBase64) {
     try {
       const match = options.coverBase64.match(/^data:(image\/[a-zA-Z0-9\+\-\.]+);base64,(.+)$/);
       if (match) {
         coverMediaType = match[1];
         const base64Data = match[2];
-        oebps.file('cover.image', base64Data, { base64: true });
+        const ext = coverMediaType.toLowerCase().includes('png') ? 'png' : 'jpg';
+        coverFileName = `cover.${ext}`;
+        
+        oebps.file(coverFileName, base64Data, { base64: true });
         hasCover = true;
 
         const coverHtml = `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
 <head>
   <title>Cover</title>
+  <meta name="viewport" content="width=600, height=800"/>
   <link rel="stylesheet" type="text/css" href="style.css"/>
+  <style type="text/css">
+    @page { margin: 0; padding: 0; }
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; text-align: center; background-color: #ffffff; }
+    .cover-wrapper { margin: 0; padding: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+  </style>
 </head>
-<body class="cover-container">
-  <img src="cover.image" alt="Cover" class="cover-img"/>
+<body>
+  <div class="cover-wrapper">
+    <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="100%" height="100%" viewBox="0 0 600 800" preserveAspectRatio="xMidYMid meet">
+      <image width="600" height="800" xlink:href="${coverFileName}"/>
+    </svg>
+  </div>
 </body>
 </html>`;
         oebps.file('cover.xhtml', coverHtml);
@@ -201,8 +245,8 @@ p {
 </head>
 <body>
   <nav epub:type="toc" id="toc">
-    <h1>目录</h1>
-    <ol>
+    <h1 class="toc-title">目 录</h1>
+    <ol class="toc-list">
 ${navList}
     </ol>
   </nav>
@@ -218,7 +262,7 @@ ${navList}
 
   if (hasCover) {
     manifestItems += `
-    <item id="cover-image" href="cover.image" media-type="${coverMediaType}" properties="cover-image"/>
+    <item id="cover-image" href="${coverFileName}" media-type="${coverMediaType}" properties="cover-image"/>
     <item id="cover-page" href="cover.xhtml" media-type="application/xhtml+xml"/>`;
   }
 
@@ -244,7 +288,7 @@ ${navList}
     <dc:creator>${escapeXmlText(author)}</dc:creator>
     <dc:language>zh-CN</dc:language>
     <meta property="dcterms:modified">${new Date().toISOString().replace(/\.[0-9]{3}Z$/, 'Z')}</meta>
-    ${hasCover ? '<meta name="cover" content="cover-image"/>' : ''}
+    ${hasCover ? `<meta name="cover" content="cover-image"/>` : ''}
   </metadata>
   <manifest>
     ${manifestItems}
@@ -269,43 +313,163 @@ ${navList}
 }
 
 /**
+ * Comprehensive chapter heading matching rules
+ */
+const CHAPTER_PATTERNS = [
+  // 经典中文格式：第x章、第x回、第x节、第x卷、第x部、第x篇、第x幕、第x集、第x分卷等
+  /^\s*(第\s*[0-9一二三四五六七八九十百千万零〇两]+\s*[章节回卷集部篇幕节分卷册款项])(\s*[:：、\s]\s*.*)?$/i,
+  // 纯中文章节：卷一、篇二、分卷一等
+  /^\s*([卷篇部分卷册]\s*[0-9一二三四五六七八九十百千万零〇两]+)(\s*[:：、\s]\s*.*)?$/i,
+  // 英文格式：Chapter 1, Section 2, Part 3, Volume 4, Book 1, Act 1, Scene 1
+  /^\s*((?:Chapter|Section|Part|Volume|Vol\.|Book|Act|Scene)\s*[0-9ivxlcdm]+)(\s*[:：\-\.]\s*.*)?$/i,
+  // 特殊结构章节标识：引子、序言、序章、后记、尾声、楔子、番外、前言、附录、结语、结案、终章、插曲
+  /^\s*(引子|序[言章幕]?|前言|自序|后记|尾声|结语|结案|终章|楔子|番外(?:\s*\d+)?|附录(?:\s*[0-9一二三四五六七八九十A-Za-z]+)?|写在前面|致谢|插曲|Content\s+[0-9]+)(\s*[:：、\s\-].*)?$/i,
+  // 纯数字或罗马数字独立标题（带点或顿号或括号）：1. / 1、 / (1) / 【1】 / 一、 / 第一、 后面跟着标题
+  /^\s*(?:[【（(]?\s*(?:[0-9]{1,4}|[一二三四五六七八九十]{1,3})\s*[】）)]?[\.、\s\-—]+)[^\r\n]{1,35}$/i,
+];
+
+/**
+ * Check if a line matches standard chapter heading rules
+ */
+export function isChapterHeading(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.length > 60) return false;
+  
+  // Exclude lines that are clearly ordinary sentences (ending with sentence-ending punctuation or too long)
+  if (/[。！？!?…]$/.test(trimmed)) return false;
+
+  for (const pattern of CHAPTER_PATTERNS) {
+    if (pattern.test(trimmed)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * In-line Substring Subtraction & Watermark Purifier
+ * Performs a subtraction pass over line/paragraph text to eradicate embedded watermark fragments
+ */
+export function cleanWatermarkSubstring(text: string): string {
+  if (!text) return "";
+  let cleaned = text;
+
+  // 1. Watermark phrase patterns (including spaced characters like "未 经 许 可", "严 禁 篡 改")
+  const phrasePatterns = [
+    // 警示语及其变体（包含字间空格、错字与标点）
+    // 专门针对被 OCR 错位交织的复合乱码水印，例如："严禁篡禁篡改C20260 许可0053330 严禁"
+    /[严禁篡改未经许可内部机密仅供参考不得外传受控文件C0-9\s]{12,}/g,
+    /未\s*经\s*许\s*可[，,\s]*严\s*禁\s*篡\s*改/gi,
+    /未\s*经\s*许\s*可/gi,
+    /严\s*禁\s*篡\s*改/gi,
+    /严\s*禁\s*篡\s*禁\s*篡\s*改/gi,
+    /未\s*禁\s*篡\s*改/gi,
+    /未\s*经\s*授\s*权/gi,
+    /严\s*禁\s*复\s*制/gi,
+    /内\s*部\s*机\s*密/gi,
+    /机\s*密\s*文\s*件/gi,
+    /仅\s*供\s*内\s*部\s*参\s*考/gi,
+    /不\s*得\s*外\s*传/gi,
+    /受\s*控\s*文\s*件/gi,
+    /版\s*权\s*所\s*有/gi,
+    /CONFIDENTIAL/gi,
+    /INTERNAL\s+USE\s+ONLY/gi,
+    /STRICTLY\s+CONFIDENTIAL/gi,
+    /DO\s+NOT\s+DISTRIBUTE/gi,
+    /WATERMARK/gi,
+    // 常见小说网站与盗版推广标识
+    /(?:笔趣阁|顶点小说|飘天文学|八零电子书|久久小说|落霞小说|69书吧|爱下书|书旗网|飞卢小说|晋江文学|起点中文网)/gi,
+    /(?:最新最快TXT小说下载|TXT小说下载|电子书下载|永久免费|免费小说网|小说免费阅读)/gi,
+    /(?:欢迎访问|本站所有资源|版权归原作者所有|转载请保留|手机访问|扫码关注)/gi,
+    /(?:关注微信公众号|微信号[:：]|QQ群[:：]|官方群[:：])/gi,
+    /(?:请支持正版|求月票|求推荐票|求收藏|求订阅|打赏)/gi,
+    /(?:ereadertxt|ereader\s*txt)/gi,
+    // 网络 URL
+    /https?:\/\/[^\s]+/gi,
+    /www\.[a-z0-9\-_]+\.[a-z0-9]+/gi,
+    // MAC 地址或设备 ID
+    /(?:[0-9A-Fa-f]{2}[:-]){4,7}[0-9A-Fa-f]{2}/g,
+    // 追踪流水工号模式（以 C 或字母开头接 8~25 位数字，或者连续 10~25 位流水数字，如 C202607150053330 / 2607150053330）
+    /[A-Za-z]?[0-9]{8,25}/g,
+  ];
+
+  for (const pattern of phrasePatterns) {
+    cleaned = cleaned.replace(pattern, " ");
+  }
+
+  // 2. 标点与格式平复：清理由于扣减水印残留的悬挂符号或连续多余空白
+  cleaned = cleaned
+    .replace(/[ \t]+/g, " ")
+    .replace(/^\s*[,，、:：;；\-—\.]+\s*/g, "") // 清理开头残留标点
+    .replace(/\s*[,，、\-—]+\s*$/g, "") // 清理末尾孤立无意义连接标点
+    .trim();
+
+  return cleaned;
+}
+
+/**
+ * Filter unwanted watermarks, website promotions, and junk lines
+ */
+export function filterWatermarkLines(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return true;
+
+  const cleaned = cleanWatermarkSubstring(trimmed);
+  if (!cleaned || cleaned.length <= 1) {
+    return false; // filtered out
+  }
+
+  return true;
+}
+
+/**
  * Parses raw text into chapter array with HTML paragraph formatting
  */
 export function extractChapters(text: string): { title: string; htmlContent: string }[] {
   const lines = text.split(/\r?\n/);
   const chapters: { title: string; htmlContent: string }[] = [];
 
-  let currentTitle = '开始';
+  let currentTitle = '';
   let currentParagraphs: string[] = [];
-
-  const chapterRegex = /^\s*(第[0-9一二三四五六七八九十百千万]+[章节回卷集部篇幕节]|Chapter\s+[0-9]+|引子|序[言章]?|后记|尾声|楔子|番外|Content\s+[0-9]+).*/i;
+  let hasFoundFirstChapter = false;
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
+    const rawLine = lines[i];
+    const line = rawLine.trim();
     if (!line) continue;
 
-    if (chapterRegex.test(line) && line.length < 50) {
+    // Apply inline watermark subtraction to remove embedded watermark fragments
+    const cleanedLine = cleanWatermarkSubstring(line);
+    if (!cleanedLine || cleanedLine.length <= 1) {
+      continue;
+    }
+
+    if (isChapterHeading(cleanedLine)) {
       if (currentParagraphs.length > 0) {
         chapters.push({
-          title: currentTitle,
+          title: currentTitle || (hasFoundFirstChapter ? '章节' : '前言 / 序'),
           htmlContent: currentParagraphs.map(p => `<p>${escapeXmlText(p)}</p>`).join('\n')
         });
         currentParagraphs = [];
       }
-      currentTitle = line;
+      currentTitle = cleanedLine;
+      hasFoundFirstChapter = true;
     } else {
-      currentParagraphs.push(line);
+      currentParagraphs.push(cleanedLine);
     }
   }
 
   if (currentParagraphs.length > 0 || chapters.length === 0) {
     chapters.push({
-      title: currentTitle,
+      title: currentTitle || (chapters.length === 0 ? '正文' : '结语 / 后记'),
       htmlContent: currentParagraphs.length > 0 ? currentParagraphs.map(p => `<p>${escapeXmlText(p)}</p>`).join('\n') : '<p>无正文</p>'
     });
   }
 
-  return chapters;
+  return chapters.map(ch => ({
+    title: ch.title.replace(/\s+/g, ' ').trim(),
+    htmlContent: ch.htmlContent
+  }));
 }
 
 /**

@@ -1,6 +1,6 @@
 {
   "name": "eReaderTxt - 电子书转换器",
-  "description": "一个极简、高效的工具，将您的 TXT 文档完美转换为 eReader 支持的电子书格式。",
+  "description": "一个极简、高效的工具，将您的 TXT / PDF 文档完美转换为 eReader 支持的电子书格式。",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }
