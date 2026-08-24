@@ -36,7 +36,7 @@ function getFontCss(fontFamily: 'default' | 'serif' | 'sans' | 'kaiti' = 'defaul
   if (fontFamily === 'serif') {
     return 'font-family: "Songti SC", "SimSun", "STSong", "Songti", serif;';
   } else if (fontFamily === 'sans') {
-    return 'font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;';
+    return 'font-family: -apple-system, "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;';
   } else if (fontFamily === 'kaiti') {
     return 'font-family: "Kaiti SC", "STKaiti", "KaiTi", "BiauKai", serif;';
   }

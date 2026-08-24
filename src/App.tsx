@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import JSZip from "jszip";
 import jschardet from "jschardet";
-import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, BookOpen, Smartphone, Sparkles, Image as ImageIcon, Info, X, ShieldCheck, Users, Eye, BookMarked, FileCode } from "lucide-react";
+import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, BookOpen, Smartphone, Sparkles, Image as ImageIcon, Info, X, ShieldCheck, Users, Eye, BookMarked, FileCode, Archive } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { buildLocalEpub, extractChapters, decodeBufferToText } from "./epubBuilder";
 import { parsePdfBuffer } from "./pdfParser";
@@ -49,7 +49,7 @@ const translations = {
     faqQ5: "章节识别不准确是怎么回事？",
     faqA5: "我们通过正则及 PDF 目录书签匹配章节。如果您的文档章节格式非常特殊，可能无法精准匹配，但正文均会完整保留。",
     faqQ6: "为什么在部分 eReader 软件里无法调整字体粗细？",
-    faqA6: "当您在转换时选择了特定的排版字体（如苹方、宋体），eReader 会以“出版者字体”模式运行，由于系统兼容性限制，此时往往会禁用其原生的粗细调整功能。如果您想拥有完整的加粗控制自由，请在转换时选择“系统默认”，这样在阅读时就可以自由切换 eReader 内置字体并调整粗细。",
+    faqA6: "当您在转换时选择了特定的排版字体（如鸿蒙黑体、宋体），eReader 会以“出版者字体”模式运行，由于系统兼容性限制，此时往往会禁用其原生的粗细调整功能。如果您想拥有完整的加粗控制自由，请在转换时选择“系统默认”，这样在阅读时就可以自由切换 eReader 内置字体并调整粗细。",
     mainTitle: "让阅读回归纯粹",
     mainSub: "将您的本地 TXT / PDF 文档轻松转换为 eReader 支持的最佳格式 (EPUB)，自动章节识别与版面智能重排，极致排版体验。",
     dropZone: "点击或拖拽 TXT / PDF 文件到此处",
@@ -101,9 +101,12 @@ const translations = {
     selectFont: "选择排版字体：",
     fontDefault: "系统默认 (推荐)",
     fontSerif: "宋体 (衬线体)",
-    fontSans: "苹方 (无衬线体)",
+    fontSans: "鸿蒙黑体 (无衬线体)",
     fontKaiti: "楷体 (手写感)",
     selectEncoding: "文件编码：",
+    autoSplitLabel: "大文件分卷：",
+    autoSplitOn: "开启 (推荐, 防卡顿)",
+    autoSplitOff: "关闭 (单文件)",
     encodingAuto: "自动识别 (推荐)",
     encodingUtf8: "UTF-8 (国际标准)",
     encodingGb: "GBK / GB18030 (简体中文)",
@@ -157,7 +160,7 @@ const translations = {
     faqQ5: "Why is chapter recognition inaccurate?",
     faqA5: "We use regex and PDF bookmarks to match chapters. If formatting is unusual, content will still be preserved sequentially.",
     faqQ6: "Why can't I adjust font weight in the eReader app?",
-    faqA6: "When you select a specific font (like PingFang or Songti), eReader operates in 'Publisher Font' mode. Due to system compatibility, this often disables native thickness adjustment. For full control over boldness, please choose 'System Default' during conversion to use built-in fonts.",
+    faqA6: "When you select a specific font (like HarmonyOS or Songti), eReader operates in 'Publisher Font' mode. Due to system compatibility, this often disables native thickness adjustment. For full control over boldness, please choose 'System Default' during conversion to use built-in fonts.",
     mainTitle: "Pure Reading Experience",
     mainSub: "Effortlessly convert your local TXT and PDF documents to the best format for eReader (EPUB), with smart chapter recognition, OCR support, and clean layout.",
     dropZone: "Click or drag TXT / PDF file here",
@@ -201,9 +204,12 @@ const translations = {
     selectFont: "Select Body Font:",
     fontDefault: "System Default (Best)",
     fontSerif: "Serif (Songti)",
-    fontSans: "Sans-serif (PingFang)",
+    fontSans: "Sans-serif (HarmonyOS)",
     fontKaiti: "Kaiti (Handwriting)",
     selectEncoding: "File Encoding:",
+    autoSplitLabel: "Split Large Files:",
+    autoSplitOn: "On (Recommended)",
+    autoSplitOff: "Off (Single file)",
     encodingAuto: "Auto-detect (Best)",
     encodingUtf8: "UTF-8 (Standard)",
     encodingGb: "GBK / GB18030 (Simplified)",
@@ -414,7 +420,7 @@ function generateDefaultCover(bookTitle: string, backgroundImageSrc?: string): P
       } else {
         fontSize = 54;
       }
-      ctx.font = `bold ${fontSize}px "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif`;
+      ctx.font = `bold ${fontSize}px "HarmonyOS Sans SC", "Microsoft YaHei", "Noto Sans SC", sans-serif`;
       
       const lines = wrapText(ctx, bookTitle, 460);
       const lineHeight = fontSize * 1.45;
@@ -494,11 +500,32 @@ export default function App() {
   const customCoverInputRef = useRef<HTMLInputElement>(null);
   const [fontFamily, setFontFamily] = useState<"default" | "serif" | "sans" | "kaiti">("default");
   const [encoding, setEncoding] = useState<"auto" | "utf-8" | "gb18030" | "big5">("auto");
+  const [autoSplit, setAutoSplit] = useState(true);
   const [forceOcr, setForceOcr] = useState(false);
   const [ocrLang, setOcrLang] = useState<"chi_sim+eng" | "eng" | "chi_tra+eng">("chi_sim+eng");
   const [removeWatermark, setRemoveWatermark] = useState(true);
   const [pdfProgressMsg, setPdfProgressMsg] = useState<string>("");
   const [isOcrResult, setIsOcrResult] = useState(false);
+  const [outputFileName, setOutputFileName] = useState<string>("");
+  const [outputBlob, setOutputBlob] = useState<Blob | null>(null);
+
+  const triggerDownload = (url: string, filename: string) => {
+    try {
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        if (link.parentNode) {
+          document.body.removeChild(link);
+        }
+      }, 300);
+    } catch (e) {
+      console.error("Download trigger error:", e);
+    }
+  };
   
   const [feedbackContent, setFeedbackContent] = useState("");
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
@@ -746,11 +773,15 @@ export default function App() {
           fontFamily,
         });
 
+        const fileName = `${finalBookTitle}.epub`;
         const url = window.URL.createObjectURL(epubBlob);
         setDownloadUrl(url);
+        setOutputFileName(fileName);
+        setOutputBlob(epubBlob);
         setStatus("success");
         trackConversionSuccess();
         setBatchProgress({ current: 0, total: 0 });
+        triggerDownload(url, fileName);
         return;
       }
 
@@ -759,7 +790,7 @@ export default function App() {
       const decodedText = decodeBufferToText(uint8Array, jschardet, encoding);
       const bookTitle = bookTitleBase;
 
-      if (file.size > 4.5 * 1024 * 1024) {
+      if (autoSplit && file.size > 4.5 * 1024 * 1024) {
         setBatchProgress({ current: 0, total: -1 });
         await new Promise(resolve => setTimeout(resolve, 300));
 
@@ -807,11 +838,15 @@ export default function App() {
         }
 
         const zipBlob = await zip.generateAsync({ type: "blob" });
+        const fileName = `${bookTitle}_分卷包.zip`;
         const url = window.URL.createObjectURL(zipBlob);
         setDownloadUrl(url);
+        setOutputFileName(fileName);
+        setOutputBlob(zipBlob);
         setStatus("success");
         trackConversionSuccess();
         setBatchProgress({ current: 0, total: 0 });
+        triggerDownload(url, fileName);
         return;
       }
 
@@ -826,10 +861,15 @@ export default function App() {
         fontFamily,
       });
 
+      const fileName = `${bookTitle}.epub`;
       const url = window.URL.createObjectURL(epubBlob);
       setDownloadUrl(url);
+      setOutputFileName(fileName);
+      setOutputBlob(epubBlob);
       setStatus("success");
       trackConversionSuccess();
+      setBatchProgress({ current: 0, total: 0 });
+      triggerDownload(url, fileName);
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : (lang === "zh" ? "本地转换过程中发生故障" : "An error occurred during local conversion"));
@@ -871,6 +911,8 @@ export default function App() {
     setStatus("idle");
     setError(null);
     setDownloadUrl(null);
+    setOutputFileName("");
+    setOutputBlob(null);
     setBatchProgress({ current: 0, total: 0 });
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -1196,30 +1238,58 @@ export default function App() {
                           </div>
 
                           {!(file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf") && (
-                            <div className="flex flex-col gap-3 mb-6">
-                              <label className="text-sm font-semibold text-slate-700 block text-left">{t.selectEncoding}</label>
-                              <div className="grid grid-cols-2 gap-2">
-                                {[
-                                  { id: "auto", label: t.encodingAuto },
-                                  { id: "utf-8", label: t.encodingUtf8 },
-                                  { id: "gb18030", label: t.encodingGb },
-                                  { id: "big5", label: t.encodingBig5 },
-                                ].map((enc) => (
+                            <>
+                              <div className="flex flex-col gap-3 mb-6">
+                                <label className="text-sm font-semibold text-slate-700 block text-left">{t.selectEncoding}</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {[
+                                    { id: "auto", label: t.encodingAuto },
+                                    { id: "utf-8", label: t.encodingUtf8 },
+                                    { id: "gb18030", label: t.encodingGb },
+                                    { id: "big5", label: t.encodingBig5 },
+                                  ].map((enc) => (
+                                    <button
+                                      key={enc.id}
+                                      onClick={() => setEncoding(enc.id as any)}
+                                      className={`py-2 px-2.5 text-xs font-medium rounded-xl border transition-all text-center truncate ${
+                                        encoding === enc.id
+                                          ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                                          : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50"
+                                      }`}
+                                      title={enc.label}
+                                    >
+                                      {enc.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col gap-3 mb-6">
+                                <label className="text-sm font-semibold text-slate-700 block text-left">{t.autoSplitLabel}</label>
+                                <div className="grid grid-cols-2 gap-2">
                                   <button
-                                    key={enc.id}
-                                    onClick={() => setEncoding(enc.id as any)}
+                                    onClick={() => setAutoSplit(true)}
                                     className={`py-2 px-2.5 text-xs font-medium rounded-xl border transition-all text-center truncate ${
-                                      encoding === enc.id
+                                      autoSplit
                                         ? "bg-slate-900 text-white border-slate-900 shadow-sm"
                                         : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50"
                                     }`}
-                                    title={enc.label}
                                   >
-                                    {enc.label}
+                                    {t.autoSplitOn}
                                   </button>
-                                ))}
+                                  <button
+                                    onClick={() => setAutoSplit(false)}
+                                    className={`py-2 px-2.5 text-xs font-medium rounded-xl border transition-all text-center truncate ${
+                                      !autoSplit
+                                        ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50"
+                                    }`}
+                                  >
+                                    {t.autoSplitOff}
+                                  </button>
+                                </div>
                               </div>
-                            </div>
+                            </>
                           )}
 
                           {(file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf") && (
@@ -1516,33 +1586,75 @@ export default function App() {
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0 }}
-                    className="flex flex-col items-center"
+                    className="flex flex-col items-center w-full"
                   >
-                    <div className="w-20 h-20 bg-green-50 text-green-600 rounded-full flex items-center justify-center mb-6">
-                      <CheckCircle size={36} />
+                    <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mb-4 border border-emerald-100/80 shadow-sm">
+                      <CheckCircle size={32} />
                     </div>
-                    <h3 className="text-2xl font-semibold mb-2">{t.successTitle}</h3>
-                    <p className="text-slate-500 mb-4">{t.successSub}</p>
+                    <h3 className="text-2xl font-bold text-slate-900 mb-1">{t.successTitle}</h3>
+                    <p className="text-slate-500 text-sm mb-5">{t.successSub}</p>
                     
                     {isOcrResult && (
-                      <div className="mb-6 px-3.5 py-1.5 bg-amber-50 border border-amber-200/80 rounded-full text-amber-800 text-xs font-medium flex items-center gap-1.5">
+                      <div className="mb-4 px-3.5 py-1.5 bg-amber-50 border border-amber-200/80 rounded-full text-amber-800 text-xs font-medium flex items-center gap-1.5">
                         <Sparkles size={14} className="text-amber-600" />
                         <span>{t.pdfOcrSuccessNote}</span>
                       </div>
                     )}
+
+                    {/* File info card */}
+                    <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5 flex items-center justify-between text-left">
+                      <div className="flex items-center gap-3 min-w-0 pr-2">
+                        <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
+                          {outputFileName.endsWith(".zip") ? <Archive size={20} /> : <BookOpen size={20} />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-slate-800 truncate" title={outputFileName}>
+                            {outputFileName || (file ? `${file.name.replace(/\.(txt|pdf)$/i, "")}.epub` : "ebook.epub")}
+                          </div>
+                          <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                            <span>{outputFileName.endsWith(".zip") ? "ZIP 压缩分卷包" : "EPUB 3.0 标准电子书"}</span>
+                            {outputBlob && (
+                              <>
+                                <span>•</span>
+                                <span>{(outputBlob.size / 1024 < 1024 ? `${(outputBlob.size / 1024).toFixed(1)} KB` : `${(outputBlob.size / (1024 * 1024)).toFixed(2)} MB`)}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="shrink-0">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-100 text-emerald-800">
+                          已生成
+                        </span>
+                      </div>
+                    </div>
                     
                     <div className="flex flex-col gap-3 w-full">
-                      <a 
-                        href={downloadUrl!} 
-                        download={file && file.size > 4.5 * 1024 * 1024 && !file.name.toLowerCase().endsWith(".pdf") ? `${file?.name.replace(/\.(txt|pdf)$/i, "")}_converted.zip` : `${file?.name.replace(/\.(txt|pdf)$/i, "")}.epub`}
-                        className="w-full bg-green-600 text-white py-4 rounded-xl font-semibold hover:bg-green-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-green-100"
+                      <button 
+                        onClick={() => {
+                          if (downloadUrl && outputFileName) {
+                            triggerDownload(downloadUrl, outputFileName);
+                          }
+                        }}
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-200/60 cursor-pointer active:scale-[0.99]"
                       >
-                        {file && file.size > 4.5 * 1024 * 1024 && !file.name.toLowerCase().endsWith(".pdf") ? t.downloadZip : `${t.downloadLabel} EPUB`}
-                        <Download size={18} />
-                      </a>
+                        <Download size={19} />
+                        <span>{outputFileName.endsWith(".zip") ? t.downloadZip : `${t.downloadLabel} EPUB`}</span>
+                      </button>
+
+                      {downloadUrl && (
+                        <a 
+                          href={downloadUrl} 
+                          download={outputFileName || "ebook.epub"}
+                          className="text-xs text-slate-400 hover:text-slate-700 transition-colors text-center py-1 underline decoration-slate-300"
+                        >
+                          如果浏览器未自动下载，请点击此处备用链接
+                        </a>
+                      )}
+
                       <button 
                         onClick={reset}
-                        className="w-full py-4 rounded-xl font-medium text-slate-500 hover:text-slate-900 transition-colors"
+                        className="w-full py-3.5 rounded-xl font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer text-sm"
                       >
                         {t.convertAnother}
                       </button>
