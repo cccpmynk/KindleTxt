@@ -500,7 +500,7 @@ export default function App() {
   const customCoverInputRef = useRef<HTMLInputElement>(null);
   const [fontFamily, setFontFamily] = useState<"default" | "serif" | "sans" | "kaiti">("default");
   const [encoding, setEncoding] = useState<"auto" | "utf-8" | "gb18030" | "big5">("auto");
-  const [autoSplit, setAutoSplit] = useState(true);
+  const [autoSplit, setAutoSplit] = useState(false);
   const [forceOcr, setForceOcr] = useState(false);
   const [ocrLang, setOcrLang] = useState<"chi_sim+eng" | "eng" | "chi_tra+eng">("chi_sim+eng");
   const [removeWatermark, setRemoveWatermark] = useState(true);
@@ -1268,16 +1268,6 @@ export default function App() {
                                 <label className="text-sm font-semibold text-slate-700 block text-left">{t.autoSplitLabel}</label>
                                 <div className="grid grid-cols-2 gap-2">
                                   <button
-                                    onClick={() => setAutoSplit(true)}
-                                    className={`py-2 px-2.5 text-xs font-medium rounded-xl border transition-all text-center truncate ${
-                                      autoSplit
-                                        ? "bg-slate-900 text-white border-slate-900 shadow-sm"
-                                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50"
-                                    }`}
-                                  >
-                                    {t.autoSplitOn}
-                                  </button>
-                                  <button
                                     onClick={() => setAutoSplit(false)}
                                     className={`py-2 px-2.5 text-xs font-medium rounded-xl border transition-all text-center truncate ${
                                       !autoSplit
@@ -1286,6 +1276,16 @@ export default function App() {
                                     }`}
                                   >
                                     {t.autoSplitOff}
+                                  </button>
+                                  <button
+                                    onClick={() => setAutoSplit(true)}
+                                    className={`py-2 px-2.5 text-xs font-medium rounded-xl border transition-all text-center truncate ${
+                                      autoSplit
+                                        ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50"
+                                    }`}
+                                  >
+                                    {t.autoSplitOn}
                                   </button>
                                 </div>
                               </div>
