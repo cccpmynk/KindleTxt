@@ -54,7 +54,7 @@ View your app in AI Studio: https://ai.studio/apps/9bf80058-0f82-4707-9ecf-b0e27
 
 ## 🛠️ 如何使用？
 
-1. 打开网站：[https://onapp.xyz](https://onapp.xyz)
+1. 打开网站：(https://ereader-txt.onapp.xyz/)
 2. 拖入或选择你的 `TXT` 或 `PDF` 文件。
 3. （可选）在配置面板中调整你的封面、字体或排版偏好。
 4. 点击“转换”按钮，即可在浏览器内秒转完成并自动下载标准的 `EPUB` 文件。
