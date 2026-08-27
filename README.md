@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://onapp.xyz"><strong>👉 立即在线体验 eReaderTxt 👈</strong></a>
+  <a href="https://ereader-txt.onapp.xyz"><strong>👉 立即在线体验 eReaderTxt 👈</strong></a>
 </p>
 
 ---
