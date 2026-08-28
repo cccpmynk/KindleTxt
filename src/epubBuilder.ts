@@ -6,6 +6,7 @@ export interface LocalEpubOptions {
   chapters: { title: string; htmlContent: string }[];
   coverBase64?: string | null;
   fontFamily?: 'default' | 'serif' | 'sans' | 'kaiti';
+  lang?: 'zh' | 'en';
 }
 
 function escapeXmlText(unsafe: string): string {
@@ -48,9 +49,10 @@ function getFontCss(fontFamily: 'default' | 'serif' | 'sans' | 'kaiti' = 'defaul
  */
 export async function buildLocalEpub(options: LocalEpubOptions): Promise<Blob> {
   const zip = new JSZip();
-  const title = options.title || 'eReader Ebook';
+  const isEn = options.lang === 'en';
+  const title = options.title || (isEn ? 'eReader Ebook' : '电子书');
   const author = options.author || 'eReaderTxt';
-  const chapters = options.chapters.length > 0 ? options.chapters : [{ title: '正文', htmlContent: '<p>无正文内容</p>' }];
+  const chapters = options.chapters.length > 0 ? options.chapters : [{ title: isEn ? 'Content' : '正文', htmlContent: isEn ? '<p>No content</p>' : '<p>无正文内容</p>' }];
   const bookId = 'urn:uuid:' + (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36));
 
   // 1. mimetype (must be first, uncompressed)
@@ -203,7 +205,7 @@ ol.toc-list li a {
   if (hasCover) {
     ncxNavPoints += `
     <navPoint id="navPoint-${playOrder}" playOrder="${playOrder}">
-      <navLabel><text>封面</text></navLabel>
+      <navLabel><text>${isEn ? 'Cover' : '封面'}</text></navLabel>
       <content src="cover.xhtml"/>
     </navPoint>`;
     playOrder++;
@@ -236,16 +238,17 @@ ol.toc-list li a {
 
   // 7. Nav (EPUB 3 Table of Contents)
   const navList = chapters.map((ch, idx) => `      <li><a href="chapter_${idx + 1}.xhtml">${escapeXmlText(ch.title)}</a></li>`).join('\n');
+  const navTitle = isEn ? 'Table of Contents' : '目 录';
   const navXhtml = `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
 <head>
-  <title>目录</title>
+  <title>${navTitle}</title>
   <link rel="stylesheet" type="text/css" href="style.css"/>
 </head>
 <body>
   <nav epub:type="toc" id="toc">
-    <h1 class="toc-title">目 录</h1>
+    <h1 class="toc-title">${navTitle}</h1>
     <ol class="toc-list">
 ${navList}
     </ol>
@@ -286,7 +289,7 @@ ${navList}
     <dc:identifier id="BookId">${escapeXmlText(bookId)}</dc:identifier>
     <dc:title>${escapeXmlText(title)}</dc:title>
     <dc:creator>${escapeXmlText(author)}</dc:creator>
-    <dc:language>zh-CN</dc:language>
+    <dc:language>${isEn ? 'en' : 'zh-CN'}</dc:language>
     <meta property="dcterms:modified">${new Date().toISOString().replace(/\.[0-9]{3}Z$/, 'Z')}</meta>
     ${hasCover ? `<meta name="cover" content="cover-image"/>` : ''}
   </metadata>
@@ -320,12 +323,18 @@ const CHAPTER_PATTERNS = [
   /^\s*(第\s*[0-9一二三四五六七八九十百千万零〇两]+\s*[章节回卷集部篇幕节分卷册款项])(\s*[:：、\s]\s*.*)?$/i,
   // 纯中文章节：卷一、篇二、分卷一等
   /^\s*([卷篇部分卷册]\s*[0-9一二三四五六七八九十百千万零〇两]+)(\s*[:：、\s]\s*.*)?$/i,
-  // 英文格式：Chapter 1, Section 2, Part 3, Volume 4, Book 1, Act 1, Scene 1
-  /^\s*((?:Chapter|Section|Part|Volume|Vol\.|Book|Act|Scene)\s*[0-9ivxlcdm]+)(\s*[:：\-\.]\s*.*)?$/i,
+  // 英文格式：Chapter 1, Section 2, Part 3, Volume 4, Book 1, Act 1, Scene 1, Chapter One, CHAPTER I
+  /^\s*((?:Chapter|Section|Part|Volume|Vol\.|Book|Act|Scene)\s*(?:[0-9ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty))(\s*[:：\-\.]\s*.*)?$/i,
+  // 罗马数字独立章节：I, II, III, IV, V, VI, VII, VIII, IX, X, XI, XII 等
+  /^\s*(?:[IVXLCDM]{1,8})(?:\s*[:：\-\.]\s+[^\r\n]{1,50})?$/i,
+  // 英文结构标识：Prologue, Preface, Foreword, Introduction, Epilogue, Afterword, Conclusion, Appendix, Acknowledgments, Postscript, Interlude, Dedication
+  /^\s*(Prologue|Preface|Foreword|Introduction|Intro|Epilogue|Afterword|Conclusion|Appendix(?:\s*[0-9A-Za-z]+)?|Acknowledgments?|Postscript|Interlude|Dedication)(\s*[:：\-\.\s].*)?$/i,
   // 特殊结构章节标识：引子、序言、序章、后记、尾声、楔子、番外、前言、附录、结语、结案、终章、插曲
-  /^\s*(引子|序[言章幕]?|前言|自序|后记|尾声|结语|结案|终章|楔子|番外(?:\s*\d+)?|附录(?:\s*[0-9一二三四五六七八九十A-Za-z]+)?|写在前面|致谢|插曲|Content\s+[0-9]+)(\s*[:：、\s\-].*)?$/i,
-  // 纯数字或罗马数字独立标题（带点或顿号或括号）：1. / 1、 / (1) / 【1】 / 一、 / 第一、 后面跟着标题
-  /^\s*(?:[【（(]?\s*(?:[0-9]{1,4}|[一二三四五六七八九十]{1,3})\s*[】）)]?[\.、\s\-—]+)[^\r\n]{1,35}$/i,
+  /^\s*(引子|序[言章幕]?|前言|自序|后记|尾声|结语|结案|终章|楔子|番外(?:\s*\d+)?|附录(?:\s*[0-9一二三四五六七八九十A-Za-z]+)?|写在前面|致谢|插曲)(\s*[:：、\s\-].*)?$/i,
+  // 中文纯序号标题：一、 / （一） / 【一】 
+  /^\s*(?:[【（(]?\s*[一二三四五六七八九十]{1,3}\s*[】）)]?[\.、\s\-—]+)[^\r\n]{1,30}$/i,
+  // 纯阿拉伯数字独立标题（如 1. 概述、1.1 技术方案、1. Introduction）
+  /^\s*(?:[【（(]?\s*[0-9]{1,4}(?:\.[0-9]{1,3})?\s*[】）)]?[\.、\s\-—]+)[^\r\n]{1,30}$/i,
 ];
 
 /**
@@ -333,10 +342,29 @@ const CHAPTER_PATTERNS = [
  */
 export function isChapterHeading(line: string): boolean {
   const trimmed = line.trim();
-  if (!trimmed || trimmed.length > 60) return false;
+  if (!trimmed || trimmed.length > 70) return false;
   
-  // Exclude lines that are clearly ordinary sentences (ending with sentence-ending punctuation or too long)
-  if (/[。！？!?…]$/.test(trimmed)) return false;
+  // Exclude lines ending with sentence-terminal punctuation (sentences, dialogue, list items)
+  if (/[。！？!?…;；,，"”'’\)\)）]$/.test(trimmed)) return false;
+
+  // A heading should never end with a period "." unless it is an explicit chapter title like "Chapter 1."
+  if (trimmed.endsWith(".")) {
+    if (!/^(?:Chapter|Section|Part|Volume|Vol\.|Book|Act|Scene|第)\s*[0-9ivxlcdm一二三四五六七八九十]+\.?$/i.test(trimmed)) {
+      return false;
+    }
+  }
+
+  // Reject in-text numbered list items / sentences starting with a digit like "5. No animal shall drink alcohol"
+  if (/^\d+[\.\s]/.test(trimmed)) {
+    const afterNum = trimmed.replace(/^\d+[\.\s\-—]+/, "").trim();
+    // Reject if it contains common English sentence verbs/clauses or starts with lowercase
+    if (/\b(shall|is|are|was|were|has|have|had|would|could|should|must|cannot|can|will|didn|doesn|don)\b/i.test(afterNum)) {
+      return false;
+    }
+    if (/^[a-z]/.test(afterNum)) {
+      return false;
+    }
+  }
 
   for (const pattern of CHAPTER_PATTERNS) {
     if (pattern.test(trimmed)) {
@@ -423,9 +451,21 @@ export function filterWatermarkLines(line: string): boolean {
 }
 
 /**
+ * Detects if the given text is predominantly English (or non-Chinese)
+ */
+export function isEnglishText(text: string): boolean {
+  if (!text) return true;
+  const sample = text.slice(0, 20000);
+  const chineseChars = (sample.match(/[\u4e00-\u9fa5]/g) || []).length;
+  // If fewer than 2% Chinese characters in sample or fewer than 15 Chinese characters, consider it an English book
+  return chineseChars < Math.max(15, sample.length * 0.02);
+}
+
+/**
  * Parses raw text into chapter array with HTML paragraph formatting
  */
-export function extractChapters(text: string): { title: string; htmlContent: string }[] {
+export function extractChapters(text: string, forceLang?: 'zh' | 'en'): { title: string; htmlContent: string }[] {
+  const isEn = forceLang ? forceLang === 'en' : isEnglishText(text);
   const lines = text.split(/\r?\n/);
   const chapters: { title: string; htmlContent: string }[] = [];
 
@@ -446,8 +486,19 @@ export function extractChapters(text: string): { title: string; htmlContent: str
 
     if (isChapterHeading(cleanedLine)) {
       if (currentParagraphs.length > 0) {
+        // If this is the very first chapter and we only have brief title/author frontmatter lines
+        if (!hasFoundFirstChapter && !currentTitle) {
+          const totalChars = currentParagraphs.join(' ').length;
+          if (totalChars < 160 && currentParagraphs.length <= 3) {
+            // Keep frontmatter to be merged seamlessly into the first chapter's opening
+            currentTitle = cleanedLine;
+            hasFoundFirstChapter = true;
+            continue;
+          }
+        }
+
         chapters.push({
-          title: currentTitle || (hasFoundFirstChapter ? '章节' : '前言 / 序'),
+          title: currentTitle || (hasFoundFirstChapter ? (isEn ? 'Chapter' : '章节') : (isEn ? 'Preface / Introduction' : '前言 / 序')),
           htmlContent: currentParagraphs.map(p => `<p>${escapeXmlText(p)}</p>`).join('\n')
         });
         currentParagraphs = [];
@@ -461,8 +512,8 @@ export function extractChapters(text: string): { title: string; htmlContent: str
 
   if (currentParagraphs.length > 0 || chapters.length === 0) {
     chapters.push({
-      title: currentTitle || (chapters.length === 0 ? '正文' : '结语 / 后记'),
-      htmlContent: currentParagraphs.length > 0 ? currentParagraphs.map(p => `<p>${escapeXmlText(p)}</p>`).join('\n') : '<p>无正文</p>'
+      title: currentTitle || (chapters.length === 0 ? (isEn ? 'Content' : '正文') : (isEn ? 'Epilogue / Afterword' : '结语 / 后记')),
+      htmlContent: currentParagraphs.length > 0 ? currentParagraphs.map(p => `<p>${escapeXmlText(p)}</p>`).join('\n') : (isEn ? '<p>No content</p>' : '<p>无正文</p>')
     });
   }
 

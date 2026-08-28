@@ -122,6 +122,22 @@ const translations = {
     cleanWatermarkTitle: "智能去水印与防噪：",
     cleanWatermarkOn: "开启 (清除背景浅灰倾斜水印/工号/广告)",
     cleanWatermarkOff: "保留原样",
+    outputFormat: "输出格式",
+    outputFormatDesc: "eReader 最佳排版 · 纯本地运算 (100% 保护隐私)",
+    coverPreview: "预览效果",
+    coverSettingTitle: "封面设置",
+    coverModeSolid: "默认纯色",
+    coverModeAi: "AI 智能配图",
+    coverModeCustom: "自定义上传",
+    coverCustomSelected: "已选择图片",
+    coverProcessTitle: "封面处理方式",
+    coverTitleTypeset: "系统排版书名",
+    coverTitleClean: "保留原图纯净",
+    coverReupload: "重传图片",
+    fileTypeZip: "ZIP 压缩分卷包",
+    fileTypeEpub: "EPUB 3.0 标准电子书",
+    statusGenerated: "已生成",
+    downloadBackup: "如果浏览器未自动下载，请点击此处备用链接",
     statsTotalViews: "总浏览量",
     statsUniqueVisitors: "独立访客",
     statsTotalConversions: "已转换书籍",
@@ -225,6 +241,22 @@ const translations = {
     cleanWatermarkTitle: "Smart De-watermark & Denoise:",
     cleanWatermarkOn: "Enabled (Remove background faint watermarks/IDs/ads)",
     cleanWatermarkOff: "Keep Raw",
+    outputFormat: "Output Format",
+    outputFormatDesc: "Best eReader layout · 100% Local processing (Private & Secure)",
+    coverPreview: "Cover Preview",
+    coverSettingTitle: "Cover Settings",
+    coverModeSolid: "Solid Color",
+    coverModeAi: "AI Illustration",
+    coverModeCustom: "Upload Image",
+    coverCustomSelected: "Image Selected",
+    coverProcessTitle: "Text Overlay Style",
+    coverTitleTypeset: "Typeset Title",
+    coverTitleClean: "Clean (No Title)",
+    coverReupload: "Change Image",
+    fileTypeZip: "ZIP Archive (Split Volumes)",
+    fileTypeEpub: "EPUB 3.0 Standard E-book",
+    statusGenerated: "Ready",
+    downloadBackup: "If download did not start automatically, click here for backup link",
     statsTotalViews: "Page Views",
     statsUniqueVisitors: "Unique Visitors",
     statsTotalConversions: "Books Converted",
@@ -294,6 +326,7 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
 interface StyleInfo {
   englishStyle: string;
   chineseTheme: string;
+  englishTheme: string;
   accentColor: string;
   bgGradientStart: string;
   bgGradientEnd: string;
@@ -308,6 +341,7 @@ function getBookStyleInfo(title: string): StyleInfo {
     return {
       englishStyle: "abstract cyberpunk artwork, glowing neon cyan and purple grid, majestic deep space nebula with shimmering digital star dust, futuristic technology texture, cold metallic glow, synthwave digital painting",
       chineseTheme: "科幻未来 (Sci-Fi & Tech)",
+      englishTheme: "Sci-Fi & Tech",
       accentColor: "rgba(6, 182, 212, 0.95)", // Cyan-500
       bgGradientStart: "#030712", // gray-950
       bgGradientEnd: "#161b22" // sleek steel-dark
@@ -320,6 +354,7 @@ function getBookStyleInfo(title: string): StyleInfo {
     return {
       englishStyle: "traditional elegant Chinese ink wash landscape painting style, ethereal misty mountains shrouded in soft clouds, subtle gold leaf foil textures, historic hand-painted oriental watercolor elements, zen minimalism, luxury atmospheric scroll theme",
       chineseTheme: "古典仙侠 (Traditional & Fantasy)",
+      englishTheme: "Classic & Fantasy",
       accentColor: "rgba(234, 179, 8, 0.95)", // Gold/Yellow-500
       bgGradientStart: "#1c1917", // warm stone dark
       bgGradientEnd: "#0c0a09"
@@ -332,6 +367,7 @@ function getBookStyleInfo(title: string): StyleInfo {
     return {
       englishStyle: "dreamy healing warm soft pastel watercolor style, fluffy pale pink and cream clouds, gentle sunbeam light leaks, aesthetic botanical floral abstract pattern, comforting nostalgic storybook concept art, warm feelings",
       chineseTheme: "治愈言情 (Romance & Healing)",
+      englishTheme: "Romance & Healing",
       accentColor: "rgba(244, 63, 94, 0.95)", // Rose-500
       bgGradientStart: "#2e1065", // dark violet
       bgGradientEnd: "#1e1b4b" // dark navy
@@ -344,6 +380,7 @@ function getBookStyleInfo(title: string): StyleInfo {
     return {
       englishStyle: "brooding gothic atmospheric oil painting style, heavy mysterious fog rolling over a dark landscape, low key chiaroscuro dramatic lighting, abstract deep crimson stains and dark charcoal textures, eerie cinematic suspense concept art",
       chineseTheme: "悬疑惊悚 (Mystery & Dark)",
+      englishTheme: "Mystery & Thriller",
       accentColor: "rgba(239, 68, 68, 0.95)", // Red-500
       bgGradientStart: "#09090b", // zinc-950
       bgGradientEnd: "#18181b" // zinc-900
@@ -356,6 +393,7 @@ function getBookStyleInfo(title: string): StyleInfo {
     return {
       englishStyle: "sophisticated premium modern editorial design style, crisp clean minimalist geometric abstract shapes, marble texture with elegant golden lines, deep warm navy and copper color palettes, fine art paper canvas background, executive luxury look",
       chineseTheme: "社科经典 (Academic & Business)",
+      englishTheme: "Academic & Business",
       accentColor: "rgba(14, 165, 233, 0.95)", // Sky-500
       bgGradientStart: "#0f172a", // slate-900
       bgGradientEnd: "#1e293b" // slate-800
@@ -366,6 +404,7 @@ function getBookStyleInfo(title: string): StyleInfo {
   return {
     englishStyle: "gorgeous elegant clean modern abstract painting style, beautiful organic flowing gradients, professional high-contrast color blocking, fine-art digital oil canvas texture",
     chineseTheme: "精致纪实 (Modern Abstract)",
+    englishTheme: "Modern Abstract",
     accentColor: "rgba(129, 140, 248, 0.95)", // Indigo-400
     bgGradientStart: "#111827", // gray-900
     bgGradientEnd: "#1f2937" // gray-800
@@ -478,8 +517,75 @@ function generateDefaultCover(bookTitle: string, backgroundImageSrc?: string): P
 }
 
 export default function App() {
-  const [lang, setLang] = useState<"zh" | "en">("zh");
+  const [lang, setLang] = useState<"zh" | "en">(() => {
+    try {
+      const saved = localStorage.getItem("ereadertxt_lang");
+      if (saved === "zh" || saved === "en") return saved;
+    } catch (e) {
+      // Ignore storage errors
+    }
+    if (typeof navigator !== "undefined" && navigator.language) {
+      return navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
+    }
+    return "zh";
+  });
+
   const t = translations[lang];
+
+  const handleToggleLang = () => {
+    const nextLang = lang === "zh" ? "en" : "zh";
+    setLang(nextLang);
+    try {
+      localStorage.setItem("ereadertxt_lang", nextLang);
+    } catch (e) {
+      // Ignore storage errors
+    }
+  };
+
+  // Auto-detect language by IP location if no explicit preference saved
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("ereadertxt_lang");
+      if (saved === "zh" || saved === "en") {
+        return; // User has already chosen a preferred language
+      }
+    } catch (e) {
+      // Continue detection
+    }
+
+    const chineseRegions = ["CN", "TW", "HK", "MO", "SG"];
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
+
+    fetch("https://api.country.is", { signal: controller.signal })
+      .then((res) => res.json())
+      .then((data) => {
+        clearTimeout(timer);
+        if (data && data.country) {
+          const isChineseRegion = chineseRegions.includes(String(data.country).toUpperCase());
+          setLang(isChineseRegion ? "zh" : "en");
+        }
+      })
+      .catch(() => {
+        // Fallback to secondary geo IP query if primary is unreachable
+        fetch("https://ipapi.co/json/", { signal: controller.signal })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data && data.country_code) {
+              const isChineseRegion = chineseRegions.includes(String(data.country_code).toUpperCase());
+              setLang(isChineseRegion ? "zh" : "en");
+            }
+          })
+          .catch(() => {
+            // Keep browser language
+          });
+      });
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, []);
 
   const [status, setStatus] = useState<ConversionStatus>("idle");
   const [file, setFile] = useState<File | null>(null);
@@ -745,8 +851,26 @@ export default function App() {
           buffer,
           (info) => {
             setBatchProgress({ current: info.current, total: info.total });
-            if (info.message) {
-              setPdfProgressMsg(info.message);
+            if (lang === "zh") {
+              if (info.type === 'extracting') {
+                setPdfProgressMsg(`正在提取页面文字 (${info.current}/${info.total})...`);
+              } else if (info.type === 'ocr_init') {
+                setPdfProgressMsg('检测到扫描/图片版 PDF，正在初始化本地 OCR 识别引擎...');
+              } else if (info.type === 'ocr_page') {
+                setPdfProgressMsg(`正在本地 OCR 识别第 ${info.current}/${info.total} 页...`);
+              } else if (info.message) {
+                setPdfProgressMsg(info.message);
+              }
+            } else {
+              if (info.type === 'extracting') {
+                setPdfProgressMsg(`Extracting text from page ${info.current}/${info.total}...`);
+              } else if (info.type === 'ocr_init') {
+                setPdfProgressMsg('Scanned PDF detected. Initializing local OCR engine...');
+              } else if (info.type === 'ocr_page') {
+                setPdfProgressMsg(`Running local OCR on page ${info.current}/${info.total}...`);
+              } else if (info.message) {
+                setPdfProgressMsg(info.message);
+              }
             }
           },
           {
@@ -771,6 +895,7 @@ export default function App() {
           chapters: pdfResult.chapters,
           coverBase64: generatedCoverBase64,
           fontFamily,
+          lang,
         });
 
         const fileName = `${finalBookTitle}.epub`;
@@ -824,21 +949,22 @@ export default function App() {
           setBatchProgress({ current: i + 1, total: chunks.length });
           await new Promise(r => setTimeout(r, 20));
 
-          const partTitle = `${bookTitle} (Part ${i + 1})`;
-          const partChapters = extractChapters(chunks[i]);
+          const partTitle = `${bookTitle} (${lang === "zh" ? `第 ${i + 1} 卷` : `Part ${i + 1}`})`;
+          const partChapters = extractChapters(chunks[i], lang);
           const epubBlob = await buildLocalEpub({
             title: partTitle,
             author: "eReaderTxt",
             chapters: partChapters,
             coverBase64: generatedCoverBase64,
             fontFamily,
+            lang,
           });
 
           zip.file(`${bookTitle}_part${i + 1}.epub`, epubBlob);
         }
 
         const zipBlob = await zip.generateAsync({ type: "blob" });
-        const fileName = `${bookTitle}_分卷包.zip`;
+        const fileName = `${bookTitle}_${lang === "zh" ? "分卷包" : "volumes"}.zip`;
         const url = window.URL.createObjectURL(zipBlob);
         setDownloadUrl(url);
         setOutputFileName(fileName);
@@ -852,13 +978,14 @@ export default function App() {
 
       // Single file conversion (100% client side)
       await new Promise(resolve => setTimeout(resolve, 200));
-      const chapters = extractChapters(decodedText);
+      const chapters = extractChapters(decodedText, lang);
       const epubBlob = await buildLocalEpub({
         title: bookTitle,
         author: "eReaderTxt",
         chapters,
         coverBase64: generatedCoverBase64,
         fontFamily,
+        lang,
       });
 
       const fileName = `${bookTitle}.epub`;
@@ -955,7 +1082,7 @@ export default function App() {
               <button onClick={() => { setShowFeedback(true); setFeedbackStatus("none"); }} className="hover:text-slate-900 transition-colors cursor-pointer">{t.feedback}</button>
             </div>
             <button 
-              onClick={() => setLang(lang === "zh" ? "en" : "zh")} 
+              onClick={handleToggleLang} 
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-all text-slate-700 font-semibold cursor-pointer"
             >
               <span className={lang === "zh" ? "text-slate-900" : "text-slate-400"}>文</span>
@@ -1193,7 +1320,7 @@ export default function App() {
                               <p className="text-xs text-slate-500 mt-0.5">
                                 {lang === "zh" 
                                   ? `智能算法已分析书名，并自动匹配 ${getBookStyleInfo(file.name.replace(/\.(txt|pdf)$/i, "")).chineseTheme} 专属设计风格` 
-                                  : `Analyzed title, matched ${getBookStyleInfo(file.name.replace(/\.(txt|pdf)$/i, "")).chineseTheme} theme design style`}
+                                  : `AI analyzed the title and matched ${getBookStyleInfo(file.name.replace(/\.(txt|pdf)$/i, "")).englishTheme} design style`}
                               </p>
                             </div>
                           </div>
@@ -1215,7 +1342,7 @@ export default function App() {
 
                         {coverMode === "custom" && customCoverPreview && (
                           <div className="flex flex-col items-center bg-slate-50 border border-slate-200 rounded-xl p-6">
-                            <div className="text-sm font-semibold text-slate-700 mb-4 self-start">预览效果 (Cover Preview)</div>
+                            <div className="text-sm font-semibold text-slate-700 mb-4 self-start">{t.coverPreview}</div>
                             <div className="relative shadow-md overflow-hidden rounded border border-slate-200" style={{ width: "225px", height: "300px" }}>
                               <img src={customCoverPreview} alt="Cover Preview" className="w-full h-full object-cover" />
                             </div>
@@ -1228,8 +1355,8 @@ export default function App() {
                             <div className="flex items-center gap-2.5">
                               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
                               <div>
-                                <span className="text-xs font-semibold text-slate-800 tracking-tight">输出格式 (Output Format)</span>
-                                <p className="text-[11px] text-slate-500">eReader 最佳排版 · 纯本地运算 (100% 保护隐私)</p>
+                                <span className="text-xs font-semibold text-slate-800 tracking-tight">{t.outputFormat}</span>
+                                <p className="text-[11px] text-slate-500">{t.outputFormatDesc}</p>
                               </div>
                             </div>
                             <span className="px-2.5 py-1 text-xs font-bold bg-slate-900 text-white rounded-lg tracking-wide">
@@ -1397,7 +1524,7 @@ export default function App() {
                         </div>
 
                         <div className="flex flex-col gap-3 mb-6">
-                          <label className="text-sm font-semibold text-slate-700 block text-left">封面设置 (Cover Mode)</label>
+                          <label className="text-sm font-semibold text-slate-700 block text-left">{t.coverSettingTitle}</label>
                           <div className="grid grid-cols-3 gap-2">
                             <button
                               onClick={() => setCoverMode("default")}
@@ -1408,7 +1535,7 @@ export default function App() {
                               }`}
                             >
                               <BookOpen size={20} className={coverMode === "default" ? "text-white" : "text-slate-400"} />
-                              默认纯色
+                              {t.coverModeSolid}
                             </button>
                             <button
                               onClick={() => setCoverMode("ai")}
@@ -1419,7 +1546,7 @@ export default function App() {
                               }`}
                             >
                               <Sparkles size={20} className={coverMode === "ai" ? "text-orange-400" : "text-orange-500"} />
-                              AI 智能配图
+                              {t.coverModeAi}
                             </button>
                             <button
                               onClick={() => {
@@ -1438,12 +1565,12 @@ export default function App() {
                                 <>
                                   <img src={customCoverBase64} alt="Custom cover" className="absolute inset-0 w-full h-full object-cover opacity-40 blur-sm" />
                                   <ImageIcon size={20} className="relative z-10 text-white" />
-                                  <span className="relative z-10">已选择图片</span>
+                                  <span className="relative z-10">{t.coverCustomSelected}</span>
                                 </>
                               ) : (
                                 <>
                                   <Upload size={20} className={coverMode === "custom" ? "text-white" : "text-slate-400"} />
-                                  自定义上传
+                                  {t.coverModeCustom}
                                 </>
                               )}
                               <input 
@@ -1459,7 +1586,7 @@ export default function App() {
                           {coverMode === "custom" && customCoverBase64 && (
                             <div className="flex flex-col gap-2 mt-1">
                               <div className="flex flex-wrap justify-between items-center bg-slate-50 border border-slate-200 rounded-xl p-3">
-                                 <div className="text-xs text-slate-500 font-medium">封面处理方式</div>
+                                 <div className="text-xs text-slate-500 font-medium">{t.coverProcessTitle}</div>
                                  <div className="flex gap-4 items-center">
                                     <label className="flex items-center gap-1.5 cursor-pointer">
                                       <input 
@@ -1468,7 +1595,7 @@ export default function App() {
                                         onChange={() => setCustomCoverWithTitle(true)} 
                                         className="w-3.5 h-3.5 text-slate-900 border-slate-300 focus:ring-slate-900" 
                                       />
-                                      <span className="text-xs font-medium text-slate-700">系统排版书名</span>
+                                      <span className="text-xs font-medium text-slate-700">{t.coverTitleTypeset}</span>
                                     </label>
                                     <label className="flex items-center gap-1.5 cursor-pointer">
                                       <input 
@@ -1477,14 +1604,14 @@ export default function App() {
                                         onChange={() => setCustomCoverWithTitle(false)} 
                                         className="w-3.5 h-3.5 text-slate-900 border-slate-300 focus:ring-slate-900" 
                                       />
-                                      <span className="text-xs font-medium text-slate-700">保留原图纯净</span>
+                                      <span className="text-xs font-medium text-slate-700">{t.coverTitleClean}</span>
                                     </label>
                                     <div className="w-px h-3 bg-slate-300 mx-1"></div>
                                     <button 
                                       onClick={(e) => { e.preventDefault(); customCoverInputRef.current?.click(); }} 
                                       className="text-xs text-orange-500 hover:text-orange-600 font-semibold"
                                     >
-                                      重传图片
+                                      {t.coverReupload}
                                     </button>
                                  </div>
                               </div>
@@ -1612,7 +1739,7 @@ export default function App() {
                             {outputFileName || (file ? `${file.name.replace(/\.(txt|pdf)$/i, "")}.epub` : "ebook.epub")}
                           </div>
                           <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
-                            <span>{outputFileName.endsWith(".zip") ? "ZIP 压缩分卷包" : "EPUB 3.0 标准电子书"}</span>
+                            <span>{outputFileName.endsWith(".zip") ? t.fileTypeZip : t.fileTypeEpub}</span>
                             {outputBlob && (
                               <>
                                 <span>•</span>
@@ -1624,7 +1751,7 @@ export default function App() {
                       </div>
                       <div className="shrink-0">
                         <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-100 text-emerald-800">
-                          已生成
+                          {t.statusGenerated}
                         </span>
                       </div>
                     </div>
@@ -1648,7 +1775,7 @@ export default function App() {
                           download={outputFileName || "ebook.epub"}
                           className="text-xs text-slate-400 hover:text-slate-700 transition-colors text-center py-1 underline decoration-slate-300"
                         >
-                          如果浏览器未自动下载，请点击此处备用链接
+                          {t.downloadBackup}
                         </a>
                       )}
 
