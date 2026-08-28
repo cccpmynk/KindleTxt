@@ -642,45 +642,125 @@ export default function App() {
     pageViews: number;
     uniqueVisitors: number;
     totalConversions: number;
-  }>({
-    pageViews: 0,
-    uniqueVisitors: 0,
-    totalConversions: 0,
+  }>(() => {
+    try {
+      const saved = localStorage.getItem("ereadertxt_cached_stats");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.pageViews === "number") {
+          return {
+            pageViews: Math.max(parsed.pageViews, 1),
+            uniqueVisitors: Math.max(parsed.uniqueVisitors, 1),
+            totalConversions: Math.max(parsed.totalConversions || 0, 0),
+          };
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+    return {
+      pageViews: 1,
+      uniqueVisitors: 1,
+      totalConversions: 0,
+    };
   });
 
-  // Track page view and visitor stats
+  // Track page view and visitor stats (Directly powered by Busuanzi with local cache)
   useEffect(() => {
-    let vid = "";
+    let isNewVisitor = false;
     try {
-      vid = localStorage.getItem("ereadertxt_vid") || "";
+      let vid = localStorage.getItem("ereadertxt_vid");
       if (!vid) {
         vid = "v_" + Math.random().toString(36).substring(2) + Date.now().toString(36);
         localStorage.setItem("ereadertxt_vid", vid);
+        isNewVisitor = true;
       }
     } catch (e) {
-      vid = "v_" + Math.random().toString(36).substring(2);
+      // ignore
     }
 
-    fetch("/api/stats/visit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ visitorId: vid }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && typeof data.pageViews === "number") {
-          setStats({
-            pageViews: data.pageViews,
-            uniqueVisitors: data.uniqueVisitors,
-            totalConversions: data.totalConversions,
+    const saveStatsLocally = (newStats: { pageViews: number; uniqueVisitors: number; totalConversions: number }) => {
+      setStats(newStats);
+      try {
+        localStorage.setItem("ereadertxt_cached_stats", JSON.stringify(newStats));
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    // Query Busuanzi directly
+    try {
+      const callbackName = "bsz_cb_" + Math.random().toString(36).substring(2, 9);
+      const script = document.createElement("script");
+      const cleanup = () => {
+        try {
+          delete (window as any)[callbackName];
+          if (script.parentNode) script.parentNode.removeChild(script);
+        } catch (e) {
+          // ignore
+        }
+      };
+
+      const timeout = setTimeout(() => {
+        cleanup();
+        // Fallback local self-increment if network is slow/offline
+        setStats((prev) => {
+          const next = {
+            pageViews: prev.pageViews + 1,
+            uniqueVisitors: prev.uniqueVisitors + (isNewVisitor ? 1 : 0),
+            totalConversions: prev.totalConversions,
+          };
+          saveStatsLocally(next);
+          return next;
+        });
+      }, 4000);
+
+      (window as any)[callbackName] = (data: any) => {
+        clearTimeout(timeout);
+        cleanup();
+        if (data && (typeof data.site_pv === "number" || typeof data.page_pv === "number")) {
+          const pv = Math.max(Number(data.site_pv || data.page_pv || 1), 1);
+          const uv = Math.max(Number(data.site_uv || 1), 1);
+          setStats((prev) => {
+            const next = {
+              pageViews: pv,
+              uniqueVisitors: uv,
+              totalConversions: prev.totalConversions,
+            };
+            saveStatsLocally(next);
+            return next;
           });
         }
-      })
-      .catch((err) => console.warn("Failed to record visit:", err));
+      };
+
+      script.src = `https://busuanzi.ibruce.info/busuanzi?jsonpCallback=${callbackName}`;
+      script.async = true;
+      script.referrerPolicy = "no-referrer-when-downgrade";
+      script.onerror = () => {
+        clearTimeout(timeout);
+        cleanup();
+      };
+      document.head.appendChild(script);
+
+      return () => {
+        clearTimeout(timeout);
+        cleanup();
+      };
+    } catch (e) {
+      // ignore
+    }
   }, []);
 
   const trackConversionSuccess = () => {
-    setStats((prev) => ({ ...prev, totalConversions: prev.totalConversions + 1 }));
+    setStats((prev) => {
+      const next = { ...prev, totalConversions: prev.totalConversions + 1 };
+      try {
+        localStorage.setItem("ereadertxt_cached_stats", JSON.stringify(next));
+      } catch (e) {
+        // ignore
+      }
+      return next;
+    });
     fetch("/api/stats/conversion", { method: "POST" }).catch(() => {});
   };
 
@@ -1871,7 +1951,7 @@ export default function App() {
             <Eye size={14} className="text-slate-400" />
             <span>{t.statsTotalViews}:</span>
             <span className="font-bold text-slate-800 tabular-nums">
-              {stats.pageViews > 0 ? stats.pageViews.toLocaleString() : "..."}
+              {(stats.pageViews || 1).toLocaleString()}
             </span>
           </div>
 
@@ -1881,7 +1961,7 @@ export default function App() {
             <Users size={14} className="text-slate-400" />
             <span>{t.statsUniqueVisitors}:</span>
             <span className="font-bold text-slate-800 tabular-nums">
-              {stats.uniqueVisitors > 0 ? stats.uniqueVisitors.toLocaleString() : "..."}
+              {(stats.uniqueVisitors || 1).toLocaleString()}
             </span>
           </div>
 
