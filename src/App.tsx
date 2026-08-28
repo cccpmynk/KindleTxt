@@ -1747,45 +1747,124 @@ export default function App() {
                   </motion.div>
                 )}
 
-                {(status === "converting" || status === "uploading" || status === "generating_cover") && (
-                  <motion.div
-                    key="processing"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="flex flex-col items-center py-12"
-                  >
-                    <div className="relative mb-8">
-                      <div className="w-24 h-24 rounded-full border-4 border-slate-100 animate-pulse" />
-                      {status === "generating_cover" ? (
-                        <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-orange-500 animate-pulse" size={40} />
-                      ) : (
-                        <Loader2 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-slate-900 animate-spin" size={40} />
+                {(status === "converting" || status === "uploading" || status === "generating_cover") && (() => {
+                  const progressPct = batchProgress.total > 0
+                    ? Math.min(100, Math.max(0, Math.round((batchProgress.current / batchProgress.total) * 100)))
+                    : 0;
+
+                  return (
+                    <motion.div
+                      key="processing"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      className="flex flex-col items-center py-10 w-full"
+                    >
+                      <div className="relative mb-6">
+                        <div className="w-20 h-20 rounded-full border-4 border-orange-100 animate-pulse" />
+                        {status === "generating_cover" ? (
+                          <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-orange-500 animate-pulse" size={36} />
+                        ) : (
+                          <Loader2 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-orange-600 animate-spin" size={36} />
+                        )}
+                      </div>
+
+                      <h3 className="text-xl font-bold text-slate-900 mb-1.5 text-center">
+                          {status === "generating_cover" ? t.drawingCover : 
+                           (batchProgress.total > 0 ? (
+                             (file?.name.toLowerCase().endsWith(".pdf") || file?.type === "application/pdf")
+                               ? (pdfProgressMsg || (lang === "zh" ? `正在解析与重排 PDF (${batchProgress.current}/${batchProgress.total} 页)...` : `Reflowing PDF (Page ${batchProgress.current}/${batchProgress.total})...`))
+                               : (lang === "zh" ? `正在转换 (分卷 ${batchProgress.current}/${batchProgress.total})...` : `Converting (Volume ${batchProgress.current}/${batchProgress.total})...`)
+                           ) : 
+                            batchProgress.total === -1 ? t.preparing :
+                            batchProgress.total === -2 ? (pdfProgressMsg || t.convertingPdf) : t.btnConverting)}
+                      </h3>
+
+                      <p className="text-slate-500 text-center max-w-sm text-sm">
+                        {status === "generating_cover" 
+                          ? t.preparingCover
+                          : (batchProgress.total > 0 ? (
+                              (file?.name.toLowerCase().endsWith(".pdf") || file?.type === "application/pdf")
+                                ? (pdfProgressMsg || t.convertingPdf)
+                                : t.convertingVolume
+                            ) : 
+                             batchProgress.total === -1 ? t.parsingLarge :
+                             batchProgress.total === -2 ? (pdfProgressMsg || t.convertingPdf) : t.convertingStandard)}
+                      </p>
+
+                      {/* Smooth Animated Progress Bar */}
+                      {batchProgress.total > 0 && (
+                        <motion.div 
+                          initial={{ opacity: 0, scale: 0.96 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ duration: 0.25 }}
+                          className="w-full max-w-md mt-6 bg-slate-50/80 border border-slate-200/80 rounded-2xl p-4 shadow-sm"
+                        >
+                          <div className="flex items-center justify-between text-xs font-semibold mb-2">
+                            <span className="text-slate-700 flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-orange-500 animate-ping inline-block" />
+                              {file?.name.toLowerCase().endsWith(".pdf") || file?.type === "application/pdf"
+                                ? (lang === "zh" ? "本地解析与排版进度" : "Local Parsing Progress")
+                                : (lang === "zh" ? "分卷压缩转换进度" : "Volume Generation Progress")}
+                            </span>
+                            <span className="tabular-nums text-orange-600 bg-orange-100/70 px-2 py-0.5 rounded-full border border-orange-200 text-xs font-mono font-bold">
+                              {progressPct}%
+                            </span>
+                          </div>
+
+                          {/* Progress Track */}
+                          <div className="w-full h-3 bg-slate-200/70 rounded-full overflow-hidden p-0.5 border border-slate-300/40 shadow-inner">
+                            <motion.div
+                              className="h-full rounded-full bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 shadow-sm relative overflow-hidden"
+                              initial={{ width: "0%" }}
+                              animate={{ width: `${progressPct}%` }}
+                              transition={{
+                                type: "spring",
+                                stiffness: 50,
+                                damping: 14,
+                                mass: 0.5
+                              }}
+                            >
+                              <div className="absolute inset-0 bg-white/25 animate-pulse" />
+                            </motion.div>
+                          </div>
+
+                          <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2 px-0.5">
+                            <span>
+                              {file?.name.toLowerCase().endsWith(".pdf") || file?.type === "application/pdf"
+                                ? (lang === "zh" ? `第 ${batchProgress.current} / ${batchProgress.total} 页` : `Page ${batchProgress.current} of ${batchProgress.total}`)
+                                : (lang === "zh" ? `分卷 ${batchProgress.current} / ${batchProgress.total}` : `Part ${batchProgress.current} of ${batchProgress.total}`)}
+                            </span>
+                            <span className="text-slate-500 font-medium">
+                              {batchProgress.current === batchProgress.total 
+                                ? (lang === "zh" ? "✨ 正在打包生成 EPUB..." : "✨ Packaging EPUB...") 
+                                : (lang === "zh" ? "⚡ 浏览器本地高速处理中" : "⚡ Processing locally in browser")}
+                            </span>
+                          </div>
+                        </motion.div>
                       )}
-                    </div>
-                    <h3 className="text-xl font-semibold mb-2">
-                        {status === "generating_cover" ? t.drawingCover : 
-                         (batchProgress.total > 0 ? (
-                           (file?.name.toLowerCase().endsWith(".pdf") || file?.type === "application/pdf")
-                             ? (pdfProgressMsg || (lang === "zh" ? `正在解析与重排 PDF (${batchProgress.current}/${batchProgress.total} 页)...` : `Reflowing PDF (Page ${batchProgress.current}/${batchProgress.total})...`))
-                             : (lang === "zh" ? `正在转换 (分卷 ${batchProgress.current}/${batchProgress.total})...` : `Converting (Volume ${batchProgress.current}/${batchProgress.total})...`)
-                         ) : 
-                          batchProgress.total === -1 ? t.preparing :
-                          batchProgress.total === -2 ? (pdfProgressMsg || t.convertingPdf) : t.btnConverting)}
-                    </h3>
-                    <p className="text-slate-500 text-center max-w-xs text-sm">
-                      {status === "generating_cover" 
-                        ? t.preparingCover
-                        : (batchProgress.total > 0 ? (
-                            (file?.name.toLowerCase().endsWith(".pdf") || file?.type === "application/pdf")
-                              ? (pdfProgressMsg || t.convertingPdf)
-                              : t.convertingVolume
-                          ) : 
-                           batchProgress.total === -1 ? t.parsingLarge :
-                           batchProgress.total === -2 ? (pdfProgressMsg || t.convertingPdf) : t.convertingStandard)}
-                    </p>
-                  </motion.div>
-                )}
+
+                      {/* Indeterminate loader bar for preparing state */}
+                      {(batchProgress.total === -1 || batchProgress.total === -2) && (
+                        <div className="w-full max-w-sm mt-5">
+                          <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200/80 p-0.5 relative">
+                            <motion.div
+                              className="h-full w-1/3 rounded-full bg-gradient-to-r from-orange-400 to-amber-500"
+                              animate={{
+                                x: ["-100%", "300%"]
+                              }}
+                              transition={{
+                                repeat: Infinity,
+                                duration: 1.5,
+                                ease: "easeInOut"
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </motion.div>
+                  );
+                })()}
 
                 {status === "success" && (
                   <motion.div
